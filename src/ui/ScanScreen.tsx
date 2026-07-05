@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import type { Face } from '../core/types'
 import { FACE_ORDER } from '../core/facelets'
-import type { ColorMatch } from '../scan/colorDetect'
+import type { ColorMatch, HSV } from '../scan/colorDetect'
+import { LOW_CONFIDENCE_THRESHOLD } from '../scan/colorDetect'
 import { STICKER_COLORS } from '../render/colors'
 import { CROSS_LAYOUT } from './crossLayout'
 import { holdInstruction } from './scanInstructions'
@@ -11,8 +12,6 @@ import type { CapturedFace } from './useFaceCapture'
 
 /** Square guide side length in CSS pixels (design-mocks.html screen 3). */
 const GUIDE_SIZE = 260
-/** Live-preview stickers below this confidence get a dashed outline. */
-const LOW_CONFIDENCE_THRESHOLD = 0.5
 
 function drawScanGuide(
   ctx: CanvasRenderingContext2D,
@@ -98,20 +97,58 @@ function ScanProgressMini({ faces }: { faces: Partial<Record<Face, CapturedFace>
   )
 }
 
+export interface ScanCompleteResult {
+  faces: Partial<Record<Face, CapturedFace>>
+  centroids: Readonly<Record<Face, HSV>>
+  calibrated: boolean
+}
+
 export interface ScanScreenProps {
   /** Escape hatch for the permission-denied / no-camera states (PR-12 scope). */
   onEnterColorsManually: () => void
+  /** Fires once `captureOrder` finishes. */
+  onScanComplete: (result: ScanCompleteResult) => void
+  /** Faces this instance should still capture, in order. Defaults to the
+   *  full U,R,F,D,L,B sequence (PR-14). Pass the faces not yet done to
+   *  resume a scan interrupted by a refresh, or a single face for "Rescan
+   *  face X" (PR-15). */
+  captureOrder?: readonly Face[]
+  /** Faces already captured in a previous scan/instance — e.g. the other 5
+   *  when resuming or rescanning. Merged into the progress mini-map and
+   *  "Face X of 6" count; this instance still only classifies and reports
+   *  the faces in `captureOrder`. */
+  priorFaces?: Partial<Record<Face, CapturedFace>>
+  /** Seed centroids so a resume/rescan benefits from a prior calibration
+   *  instead of restarting from `DEFAULT_CENTROIDS`. */
+  seedCentroids?: Readonly<Record<Face, HSV>>
+  seedCalibrated?: boolean
 }
 
-/** PR-14: guided 6-face scan flow on top of the PR-12 camera plumbing and
- *  PR-13 color classification — fixed U,R,F,D,L,B capture order with a hold
- *  instruction per face, a live per-sticker classification preview drawn on
- *  the guide overlay, auto-capture after ~1s of stable classification (or a
- *  manual capture button), and a mini unfolded-cube progress indicator. */
-export function ScanScreen({ onEnterColorsManually }: ScanScreenProps) {
+/** PR-14/15: guided scan flow on top of the PR-12 camera plumbing and PR-13
+ *  color classification — fixed U,R,F,D,L,B capture order (or a resumed /
+ *  single-face subset) with a hold instruction per face, a live per-sticker
+ *  classification preview drawn on the guide overlay, auto-capture after
+ *  ~1s of stable classification (or a manual capture button), and a mini
+ *  unfolded-cube progress indicator. */
+export function ScanScreen({
+  onEnterColorsManually,
+  onScanComplete,
+  captureOrder,
+  priorFaces,
+  seedCentroids,
+  seedCalibrated,
+}: ScanScreenProps) {
   const { videoRef, status, errorKind, mirrored } = useCamera()
-  const { attachVideo, currentFace, isComplete, faces, liveStickers, captureNow } =
-    useFaceCapture(status === 'ready')
+  const {
+    attachVideo,
+    currentFace,
+    isComplete,
+    faces,
+    liveStickers,
+    captureNow,
+    centroids,
+    calibrated,
+  } = useFaceCapture(status === 'ready', { captureOrder, seedCentroids, seedCalibrated })
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
@@ -127,12 +164,20 @@ export function ScanScreen({ onEnterColorsManually }: ScanScreenProps) {
     drawScanGuide(ctx, GUIDE_SIZE, liveStickers)
   }, [status, liveStickers])
 
+  useEffect(() => {
+    if (isComplete) onScanComplete({ faces, centroids, calibrated })
+    // Fires exactly once per scan: `isComplete` flips false -> true and stays
+    // true, so this effect body only runs on that single transition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isComplete])
+
   const attachVideoAndCamera = (el: HTMLVideoElement | null) => {
     videoRef(el)
     attachVideo(el)
   }
 
-  const facesDone = FACE_ORDER.filter((face) => faces[face]).length
+  const allFaces = { ...priorFaces, ...faces }
+  const facesDone = FACE_ORDER.filter((face) => allFaces[face]).length
   const progressPill = isComplete ? 'All 6 faces scanned' : `Face ${facesDone + 1} of 6`
 
   return (
@@ -165,7 +210,7 @@ export function ScanScreen({ onEnterColorsManually }: ScanScreenProps) {
         ) : isComplete ? (
           <div className="scan-complete">
             <p className="scan-complete-title">All 6 faces scanned!</p>
-            <ScanProgressMini faces={faces} />
+            <ScanProgressMini faces={allFaces} />
           </div>
         ) : (
           <>
@@ -187,7 +232,7 @@ export function ScanScreen({ onEnterColorsManually }: ScanScreenProps) {
               {status === 'starting' && <p className="scan-starting">Starting camera…</p>}
             </div>
             <div className="scan-controls-row">
-              <ScanProgressMini faces={faces} />
+              <ScanProgressMini faces={allFaces} />
               <p className="scan-auto-hint">Auto-captures when steady</p>
               <button
                 type="button"
