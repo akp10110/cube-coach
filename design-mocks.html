@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CubeCoach — design mocks (locked)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.14.0/dist/tabler-icons.min.css">
+<style>
+  :root{
+    --cc-bg:#14161B; --cc-surface:#1D2026; --cc-border:#2A2E36; --cc-divider:#232730;
+    --cc-text:#E8EAED; --cc-text-2:#9AA0AB; --cc-text-3:#6B7280;
+    --cc-accent:#8B7CF6; --cc-accent-tint:rgba(139,124,246,.14); --cc-accent-text:#B7ACFA;
+  }
+  *{box-sizing:border-box}
+  body{background:#0D0F12;color:var(--cc-text);font-family:system-ui,-apple-system,sans-serif;margin:0;padding:48px 20px;display:flex;flex-direction:column;gap:56px;align-items:center}
+  h1{font-size:20px;font-weight:500;margin:0}
+  .note{font-size:13px;color:var(--cc-text-3);max-width:560px;text-align:center;line-height:1.6;margin:6px 0 0}
+  section{display:flex;flex-direction:column;align-items:center;gap:14px}
+  .label{font-size:12px;color:var(--cc-text-3);letter-spacing:.08em;text-transform:uppercase;margin:0}
+  .phone{width:300px;background:var(--cc-bg);border:1px solid var(--cc-border);border-radius:24px;overflow:hidden}
+  .pad{padding:20px 16px}
+  .btn-p{width:100%;padding:13px;border-radius:12px;border:none;background:var(--cc-accent);color:#14161B;font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+  .btn-g{width:100%;padding:12px;border-radius:12px;border:1px solid var(--cc-border);background:transparent;color:#C6CAD2;font-size:13px;cursor:pointer}
+  .btn-d{width:100%;padding:12px;border-radius:10px;border:none;background:#262A31;color:#7B818C;font-size:14px}
+  .pill{font-size:12px;color:var(--cc-accent-text);background:var(--cc-accent-tint);padding:3px 10px;border-radius:999px}
+  .mono{font-family:ui-monospace,Menlo,monospace}
+  .sub{font-size:12px;color:var(--cc-text-2)}
+  @media (prefers-reduced-motion: no-preference){
+    .flow{stroke-dasharray:7 5;animation:flow 1.4s linear infinite}
+    @keyframes flow{to{stroke-dashoffset:-24}}
+  }
+</style>
+</head>
+<body>
+
+<header style="display:flex;flex-direction:column;align-items:center">
+  <h1>CubeCoach — design mocks (locked)</h1>
+  <p class="note">Approved by the delivery manager. These screens plus tasks.md section 9 define "done" for all UI PRs. Palette, layer-highlight cue, move-card hierarchy, and copy tone are binding; exact pixel spacing is not.</p>
+</header>
+
+<section>
+  <p class="label">1 · Home</p>
+  <div class="phone" style="padding:36px 20px 26px;display:flex;flex-direction:column;align-items:center">
+    <div style="width:56px;height:56px;border-radius:16px;background:var(--cc-accent);display:flex;align-items:center;justify-content:center;color:#14161B"><i class="ti ti-cube" style="font-size:30px"></i></div>
+    <p style="margin:16px 0 6px;font-size:22px;font-weight:500">CubeCoach</p>
+    <p style="margin:0 0 30px;font-size:13px;color:var(--cc-text-2);text-align:center;line-height:1.6">Show us your scrambled cube.<br>We'll walk you through every turn.</p>
+    <button class="btn-p" style="margin-bottom:10px"><i class="ti ti-camera" style="font-size:18px"></i>Scan my cube</button>
+    <button class="btn-g">Enter colors by hand</button>
+    <p style="margin:16px 0 0;font-size:11px;color:var(--cc-text-3)">Works with any standard 3×3 cube</p>
+  </div>
+</section>
+
+<section>
+  <p class="label">2 · Solve screen — follow mode (default)</p>
+  <div style="width:min(720px,95vw);background:var(--cc-bg);border:1px solid var(--cc-border);border-radius:16px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--cc-divider)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:22px;height:22px;border-radius:6px;background:var(--cc-accent);display:flex;align-items:center;justify-content:center;color:#14161B"><i class="ti ti-cube" style="font-size:15px"></i></div>
+        <span style="font-size:15px;font-weight:500">CubeCoach</span>
+      </div>
+      <span class="pill">Quick solve · 21 moves</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap">
+      <div style="flex:1.1;min-width:280px;display:flex;align-items:center;justify-content:center;padding:24px 12px" id="cube-cue"></div>
+      <div style="flex:1;min-width:280px;border-left:1px solid var(--cc-divider);padding:20px">
+        <div style="background:var(--cc-surface);border-radius:12px;padding:18px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <p style="margin:0;font-size:19px;font-weight:500;display:flex;align-items:center;gap:9px">Turn the <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:16px;height:16px;border-radius:5px;background:#B71234"></span>red side</span></p>
+            <span class="mono" style="font-size:12px;color:var(--cc-text-3);border:1px solid var(--cc-border);padding:3px 8px;border-radius:6px">R'</span>
+          </div>
+          <p style="margin:0;font-size:13px;color:var(--cc-text-2)">Follow the arrow — just one quarter turn</p>
+        </div>
+        <button class="btn-p" style="padding:14px;font-size:16px;border-radius:12px;margin-bottom:12px"><i class="ti ti-check" style="font-size:18px"></i>I did it</button>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--cc-text-2);margin-bottom:6px"><span>Move 7 of 21</span><span>Follow mode</span></div>
+        <div style="height:5px;background:#262A31;border-radius:999px;margin-bottom:16px"><div style="width:33%;height:100%;background:var(--cc-accent);border-radius:999px"></div></div>
+        <div class="mono" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;font-size:12px" id="chips"></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn-g" style="width:38px;height:38px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center" aria-label="Previous"><i class="ti ti-arrow-left" style="font-size:16px"></i></button>
+          <button class="btn-g" style="width:38px;height:38px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center" aria-label="Watch mode play"><i class="ti ti-player-play" style="font-size:16px"></i></button>
+          <button class="btn-g" style="width:38px;height:38px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center" aria-label="Next"><i class="ti ti-arrow-right" style="font-size:16px"></i></button>
+          <span class="sub" style="margin-left:auto;border:1px solid var(--cc-border);padding:5px 12px;border-radius:999px">Speed 1×</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="label">3 · Camera scan</p>
+  <div class="phone">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">
+      <span style="font-size:13px;font-weight:500">Scan your cube</span>
+      <span class="pill">Face 3 of 6</span>
+    </div>
+    <p style="margin:0 16px 12px;font-size:13px;color:#C6CAD2;line-height:1.5">Hold the <span style="font-weight:500;color:var(--cc-text)">green center</span> facing the camera, white on top</p>
+    <div style="background:#0B0D10;padding:26px 0;display:flex;justify-content:center">
+      <div id="scan-grid" style="border:1.5px solid rgba(255,255,255,.55);border-radius:14px;padding:8px;display:grid;grid-template-columns:repeat(3,50px);gap:6px"></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 18px">
+      <div id="scan-mini" style="position:relative;width:62px;height:47px"></div>
+      <p style="margin:0;flex:1;padding:0 12px;font-size:11px;color:var(--cc-text-2);line-height:1.5">Auto-captures when steady</p>
+      <div style="width:46px;height:46px;border-radius:50%;border:3px solid var(--cc-text);display:flex;align-items:center;justify-content:center"><div style="width:32px;height:32px;border-radius:50%;background:var(--cc-text)"></div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="label">4 · Scan review</p>
+  <div class="phone pad">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <span style="font-size:14px;font-weight:500">Check the scan</span>
+      <span class="pill">6 of 6 faces</span>
+    </div>
+    <div id="cross-review" style="position:relative;width:208px;height:155px;margin:0 auto 14px"></div>
+    <p style="margin:0 0 16px;font-size:12px;color:var(--cc-text-2);text-align:center;line-height:1.5">2 stickers look unsure — tap any sticker to fix it</p>
+    <button class="btn-p" style="border-radius:10px;margin-bottom:10px">Looks right — solve it</button>
+    <button class="btn-g" style="border-radius:10px">Rescan a face</button>
+  </div>
+</section>
+
+<section>
+  <p class="label">5 · Manual color editor (validation state shown)</p>
+  <div class="phone pad">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <span style="font-size:14px;font-weight:500">Set your colors</span>
+      <span class="sub">Tap a sticker to paint it</span>
+    </div>
+    <div id="cross-edit" style="position:relative;width:208px;height:155px;margin:0 auto 16px"></div>
+    <div id="palette" style="display:flex;justify-content:center;gap:9px;margin-bottom:14px"></div>
+    <div style="display:flex;gap:8px;align-items:flex-start;background:rgba(239,159,39,.12);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <i class="ti ti-alert-triangle" style="font-size:16px;color:#F3C36B;margin-top:1px"></i>
+      <p style="margin:0;font-size:12px;color:#F3C36B;line-height:1.5">One corner looks twisted — check the three dashed stickers.</p>
+    </div>
+    <button class="btn-d">Fix the corner to continue</button>
+  </div>
+</section>
+
+<section>
+  <p class="label">6 · Learn mode checkpoint</p>
+  <div class="phone">
+    <div style="background:var(--cc-accent-tint);padding:14px 16px;border-bottom:1px solid var(--cc-divider)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:13px;font-weight:500;color:#CFC7FB">Stage 2 of 7 · White corners</span>
+        <span id="stage-dots" style="display:flex;gap:4px"></span>
+      </div>
+      <p style="margin:0;font-size:12px;color:#9C93C9;line-height:1.5">Placing the four white corners — the same three-move trick repeats. Watch for it.</p>
+    </div>
+    <div class="pad" style="padding-top:18px">
+      <div style="background:var(--cc-surface);border-radius:12px;padding:16px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <i class="ti ti-scan" style="font-size:20px;color:var(--cc-accent)"></i>
+          <p style="margin:0;font-size:14px;font-weight:500">Stage complete — quick check</p>
+        </div>
+        <p style="margin:0;font-size:12px;color:var(--cc-text-2);line-height:1.6">You've made 12 moves. Scan your cube so we can make sure it matches before the next stage.</p>
+      </div>
+      <button class="btn-p" style="border-radius:10px;margin-bottom:10px">Check my cube</button>
+      <button class="btn-g" style="border-radius:10px">Keep going</button>
+      <p style="margin:14px 0 0;font-size:11px;color:var(--cc-text-3);line-height:1.6;text-align:center">Made a wrong turn? No problem — we'll re-route from wherever your cube is.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="label">7 · Solved celebration</p>
+  <div class="phone" style="padding:26px 20px;position:relative;display:flex;flex-direction:column;align-items:center">
+    <span style="position:absolute;top:22px;left:34px;width:8px;height:8px;border-radius:50%;background:#FFD500"></span>
+    <span style="position:absolute;top:48px;right:44px;width:7px;height:7px;border-radius:2px;background:#8B7CF6;transform:rotate(24deg)"></span>
+    <span style="position:absolute;top:86px;left:52px;width:6px;height:6px;border-radius:2px;background:#009B48;transform:rotate(-18deg)"></span>
+    <span style="position:absolute;top:30px;right:96px;width:6px;height:6px;border-radius:50%;background:#FF5800"></span>
+    <span style="position:absolute;top:110px;right:32px;width:8px;height:8px;border-radius:2px;background:#B71234;transform:rotate(40deg)"></span>
+    <span style="position:absolute;top:130px;left:30px;width:7px;height:7px;border-radius:50%;background:#0046AD"></span>
+    <div id="cube-solved" style="margin-top:8px"></div>
+    <p style="margin:14px 0 4px;font-size:26px;font-weight:500">Solved!</p>
+    <p style="margin:0 0 22px;font-size:13px;color:var(--cc-text-2)">21 moves · 4 min 32 s</p>
+    <button class="btn-p" style="border-radius:12px;margin-bottom:10px">Solve another</button>
+    <button class="btn-g">Try Learn mode next time</button>
+  </div>
+</section>
+
+<script>
+const HEX={W:'#F5F5F0',Y:'#FFD500',G:'#009B48',B:'#0046AD',R:'#B71234',O:'#FF5800'};
+const FACES={u:'GWRBWOYWG',l:'WOGYOBROW',f:'RBYOGWGBR',r:'YGOWRBBYO',b:'OYWGBRWGY',d:'BRBGYWOOG'};
+const MAT={u:'matrix(0.866,0.5,-0.866,0.5,200,30)',f:'matrix(-0.866,-0.5,0,1,200,120)',r:'matrix(0.866,-0.5,0,1,200,120)'};
+const LAYER_R={u:[2,5,8],f:[0,3,6],r:[0,1,2,3,4,5,6,7,8]};
+
+function isoCube(elId,opt){
+  let s='<svg width="'+(opt.w||240)+'" viewBox="100 10 200 260">';
+  s+='<defs><marker id="mk-'+elId+'" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M1 1L8 5L1 9" fill="none" stroke="#8B7CF6" stroke-width="2.4" stroke-linecap="round"/></marker></defs>';
+  s+='<polygon points="200,30 277.9,75 277.9,165 200,210 122.1,165 122.1,75" fill="#0B0D10"/>';
+  ['u','f','r'].forEach(function(fc){
+    s+='<g transform="'+MAT[fc]+'">';
+    if(opt.solid){
+      s+='<rect width="90" height="90" rx="4" fill="'+HEX[opt.solid[fc]]+'"/><path d="M30 0V90M60 0V90M0 30H90M0 60H90" stroke="#0B0D10" stroke-width="3" fill="none"/>';
+    } else {
+      opt.faces[fc].split('').forEach(function(c,i){
+        const x=2+(i%3)*30, y=2+Math.floor(i/3)*30;
+        const dim=opt.cue && LAYER_R[fc].indexOf(i)<0 ? ' opacity="0.22"' : '';
+        s+='<rect x="'+x+'" y="'+y+'" width="26" height="26" rx="3" fill="'+HEX[c]+'"'+dim+'/>';
+      });
+      if(opt.cue){
+        if(fc==='u') s+='<rect x="60" width="30" height="90" rx="4" fill="none" stroke="#8B7CF6" stroke-width="3"/>';
+        if(fc==='f') s+='<rect width="30" height="90" rx="4" fill="none" stroke="#8B7CF6" stroke-width="3"/>';
+        if(fc==='r'){
+          s+='<rect width="90" height="90" rx="4" fill="none" stroke="#8B7CF6" stroke-width="3"/>';
+          s+='<path d="M 45 12 A 33 33 0 0 0 12.5 50.7" fill="none" stroke="#0B0D10" stroke-width="9" stroke-linecap="round"/>';
+          s+='<path class="flow" d="M 45 12 A 33 33 0 0 0 12.5 50.7" fill="none" stroke="#8B7CF6" stroke-width="5" stroke-linecap="round" marker-end="url(#mk-'+elId+')"/>';
+        }
+      }
+    }
+    s+='</g>';
+  });
+  s+='</svg>';
+  document.getElementById(elId).innerHTML=s;
+}
+
+function cross(rootId,marks,cell,gapUnit){
+  cell=cell||15; gapUnit=gapUnit||53;
+  const pos={u:[1,0],l:[0,1],f:[1,1],r:[2,1],b:[3,1],d:[1,2]};
+  const root=document.getElementById(rootId);
+  for(const k in pos){
+    const g=document.createElement('div');
+    g.style.cssText='position:absolute;left:'+(pos[k][0]*gapUnit)+'px;top:'+(pos[k][1]*gapUnit)+'px;display:grid;grid-template-columns:repeat(3,'+cell+'px);gap:2px';
+    FACES[k].split('').forEach(function(c,i){
+      const d=document.createElement('div');
+      let st='width:'+cell+'px;height:'+cell+'px;border-radius:3px;background:'+HEX[c];
+      if(marks && marks.indexOf(k+i)>-1) st+=';outline:2px dashed #EF9F27;outline-offset:1px';
+      d.style.cssText=st;
+      g.appendChild(d);
+    });
+    root.appendChild(g);
+  }
+}
+
+isoCube('cube-cue',{faces:{u:FACES.u,f:FACES.f,r:FACES.r},cue:true,w:250});
+isoCube('cube-solved',{solid:{u:'W',f:'G',r:'R'},w:150});
+
+const MOVES=['U','R2',"F'",'D','L',"U'","R'",'B2','U','F2','…'];
+document.getElementById('chips').innerHTML=MOVES.map(function(m,i){
+  if(i===6) return '<span style="padding:4px 8px;border-radius:6px;color:#14161B;background:#8B7CF6;font-weight:500">'+m+'</span>';
+  const c=i<6?'#5A6069':'#9AA0AB', b=i<6?'#22262D':'#2A2E36';
+  return '<span style="padding:4px 8px;border-radius:6px;color:'+c+';border:1px solid '+b+'">'+m+'</span>';
+}).join('');
+
+const SCAN=['G','Y','B','R','G','W','O','B','Y'];
+document.getElementById('scan-grid').innerHTML=SCAN.map(function(c,i){
+  const warn=i===3?';border:2px dashed #EF9F27':'';
+  return '<div style="width:50px;height:50px;border-radius:8px;background:'+HEX[c]+';opacity:.88'+warn+'"></div>';
+}).join('');
+
+const mini=document.getElementById('scan-mini');
+[[1,0,1],[0,1,1],[1,1,1],[2,1,0],[3,1,0],[1,2,0]].forEach(function(p){
+  const d=document.createElement('div');
+  d.style.cssText='position:absolute;left:'+(p[0]*16)+'px;top:'+(p[1]*16)+'px;width:14px;height:14px;border-radius:3px;'+(p[2]?'background:#3A3F49':'border:1px solid #2A2E36');
+  mini.appendChild(d);
+});
+
+document.getElementById('stage-dots').innerHTML=[1,1,0,0,0,0,0].map(function(on){
+  return '<span style="width:7px;height:7px;border-radius:50%;background:'+(on?'#8B7CF6':'#3A3F49')+'"></span>';
+}).join('');
+
+document.getElementById('palette').innerHTML=Object.keys(HEX).map(function(k,i){
+  const sel=k==='G'?';outline:2px solid #8B7CF6;outline-offset:2px':'';
+  return '<span style="width:26px;height:26px;border-radius:7px;background:'+HEX[k]+sel+'"></span>';
+}).join('');
+
+cross('cross-review',['b1','l5']);
+cross('cross-edit',['f8','r6','d2']);
+</script>
+</body>
+</html>
