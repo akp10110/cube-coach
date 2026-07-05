@@ -57,6 +57,10 @@ export class Animator {
   private playing = false
   private animating = false
   private speed = 1
+  /** Disabled while fast-forwarding a scramble (PR-08): the hidden-face
+   *  auto-orbit is meant to guide the user through a solve, not to
+   *  choreograph the camera during a rapid, no-action-required shuffle. */
+  private autoOrbit = true
   private moveCompleteCb?: (move: Move, cursor: number) => void
   private queueEmptyCb?: () => void
 
@@ -74,6 +78,16 @@ export class Animator {
     return this.queue.moves.length
   }
 
+  get moves(): readonly Move[] {
+    return this.queue.moves
+  }
+
+  /** The facelet state as of the last completed move (i.e. with `cursor`
+   *  moves applied to the state the Animator was constructed with). */
+  get state(): FaceletString {
+    return this.currentState
+  }
+
   enqueue(moves: Move[]): void {
     this.queue = enqueueMoves(this.queue, moves)
   }
@@ -88,6 +102,10 @@ export class Animator {
 
   setSpeed(multiplier: number): void {
     this.speed = multiplier
+  }
+
+  setAutoOrbit(enabled: boolean): void {
+    this.autoOrbit = enabled
   }
 
   play(): void {
@@ -123,7 +141,9 @@ export class Animator {
   private async playMove({ move, state }: { move: Move; state: QueueState }): Promise<void> {
     this.animating = true
     const nextState = applyMove(this.currentState, move)
-    await this.renderer.animateMove(move, nextState, BASE_DURATION_MS / this.speed)
+    await this.renderer.animateMove(move, nextState, BASE_DURATION_MS / this.speed, {
+      autoOrbit: this.autoOrbit,
+    })
     this.currentState = nextState
     this.queue = state
     this.animating = false

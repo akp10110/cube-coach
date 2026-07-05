@@ -11,7 +11,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "cubejs": "^1.3.2",
@@ -22,7 +23,9 @@
   "overrides": {
     "cubejs": {
       "npm": "file:vendor/stub-npm"
-    }
+    },
+    "@emnapi/core": "1.11.2",
+    "@emnapi/runtime": "1.11.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -36,6 +39,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.7.0",
+    "patch-package": "^8.0.1",
     "prettier": "^3.9.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",
