@@ -1,5 +1,16 @@
 import { FACE_ORDER, faceOf, faceletAt } from './facelets'
-import { CORNER_NAMES, EDGE_NAMES, decodeCorners, decodeEdges } from './cubies'
+import {
+  CORNER_FACELETS,
+  CORNER_NAMES,
+  EDGE_FACELETS,
+  EDGE_NAMES,
+  decodeCorners,
+  decodeEdges,
+  flippedEdgeSlots,
+  invalidCornerSlots,
+  invalidEdgeSlots,
+  twistedCornerSlots,
+} from './cubies'
 import type { Face, FaceletString, ValidationIssue, ValidationResult } from './types'
 
 /** A face is solved when all 9 of its stickers match its own identity
@@ -130,4 +141,38 @@ export function validate(s: FaceletString): ValidationResult {
   }
 
   return { ok: issues.length === 0, issues }
+}
+
+/** Absolute facelet positions (0..53) of the stickers a `ValidationIssue`
+ *  implicates, for the issue kinds that can be pinned to specific pieces
+ *  (PR-11): a bad/duplicate piece, or a twisted corner/flipped edge (nonzero
+ *  orientation). Additive alongside `validate()` — the public
+ *  `ValidationIssue` contract (section 4) is unchanged; this is a parallel
+ *  internal API for the 2D editor's sticker highlighting.
+ *
+ *  Empty for issues with no single fixed sticker set: `bad-length`,
+ *  `bad-color-count`, and `bad-centers` span the whole cube, and
+ *  `permutation-parity` can't be localized to one pair of pieces from the
+ *  facelets alone — many different swaps produce the same parity break. */
+export function localizeIssue(s: FaceletString, issue: ValidationIssue): number[] {
+  switch (issue.kind) {
+    case 'invalid-piece': {
+      const corners = decodeCorners(s)
+      const edges = decodeEdges(s)
+      return [
+        ...invalidCornerSlots(corners).flatMap((i) => CORNER_FACELETS[CORNER_NAMES[i]]),
+        ...invalidEdgeSlots(edges).flatMap((i) => EDGE_FACELETS[EDGE_NAMES[i]]),
+      ]
+    }
+    case 'corner-orientation': {
+      const corners = decodeCorners(s)
+      return twistedCornerSlots(corners).flatMap((i) => CORNER_FACELETS[CORNER_NAMES[i]])
+    }
+    case 'edge-orientation': {
+      const edges = decodeEdges(s)
+      return flippedEdgeSlots(edges).flatMap((i) => EDGE_FACELETS[EDGE_NAMES[i]])
+    }
+    default:
+      return []
+  }
 }

@@ -280,7 +280,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Scope:** `/edit` screen: unfolded (cross-shaped) 2D cube, tap a sticker → cycle or pick from a 6-color palette. Centers fixed (they define the color scheme). Live validation banner driven by `validate()`: friendly message per `ValidationIssue` kind (write a `describeIssue()` map with tests — e.g. `corner-orientation` → "One corner appears twisted. Check the highlighted corners."). "Solve this cube" button enabled only when valid; routes into the Phase-3 solve screen with this state.
 - **Depends:** PR-09, PR-04.
 
-#### ☐ PR-11 `[S]` Issue highlighting
+#### ☑ PR-11 `[S]` Issue highlighting
 - **Scope:** where a `ValidationIssue` can be localized (bad piece, twisted corner), highlight the offending stickers on the 2D editor. Extend `validate()`'s internal cubie module to report positions — additive change only; contract in section 4 unchanged (`invalid-piece.detail` already carries text; add a parallel internal API for positions rather than changing the public type).
 - **Depends:** PR-10.
 

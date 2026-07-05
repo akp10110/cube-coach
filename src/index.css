@@ -505,6 +505,12 @@ body {
   outline-offset: -1px;
 }
 
+/* PR-11: highlight the stickers a localizable ValidationIssue implicates. */
+.sticker-flagged {
+  outline: 2px dashed #ef9f27;
+  outline-offset: 1px;
+}
+
 .palette {
   display: flex;
   justify-content: center;
