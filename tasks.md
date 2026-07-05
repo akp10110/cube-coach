@@ -241,7 +241,7 @@ export function isSolved(s: FaceletString): boolean;
 
 ### Phase 2 — 3D cube rendering & animation
 
-#### ☐ PR-06 `[S]` Static 3D cube from state
+#### ☑ PR-06 `[S]` Static 3D cube from state
 - **Scope:** `render/CubeRenderer.ts` — Three.js scene: 27 cubelets (rounded-ish box geometry fine), sticker colors as materials per facelet. Public API: `constructor(canvas)`, `setState(facelets: FaceletString)`, `dispose()`. Orbit-style drag to rotate the whole cube view (implement simple pointer-drag rotation of a group; do NOT depend on `OrbitControls` — implement ~30 lines of drag math instead, mobile-friendly). Colors: U white, D yellow, F green, B blue, R red, L orange; make this a single exported color map so the scan UI reuses it.
 - **Acceptance:** a `/dev` route (dev-only) renders SOLVED and a hardcoded scrambled state correctly. Manually verify sticker orientation against a real cube photo: this is the #1 place a silent mapping bug enters. Add a unit test for the (face,index) → cubelet/face mapping table itself.
 - **Out of scope:** animation.
