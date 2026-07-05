@@ -1,12 +1,21 @@
+import type { FaceletString } from '../core/types'
 import { formatMoves } from '../core/moves'
 import { STICKER_COLORS } from '../render/colors'
 import { describeLayer } from './describeLayer'
 import { useSolveSession } from './useSolveSession'
 
+export interface SolveScreenProps {
+  /** Cube state to start the session from (PR-10 hand-off from the manual
+   *  editor); defaults to SOLVED inside `useSolveSession`. */
+  initialState?: FaceletString
+  /** Present when the app can navigate to the manual editor (PR-10). */
+  onEditColors?: () => void
+}
+
 /** PR-08: real app layout (design-mocks.html screen 2) — header, cube stage,
  *  control panel with follow-mode move card + "I did it", and the secondary
  *  watch-mode transport (prev/play-pause/next/speed). */
-export function SolveScreen() {
+export function SolveScreen({ initialState, onEditColors }: SolveScreenProps) {
   const {
     attachCanvas,
     solverReady,
@@ -29,7 +38,7 @@ export function SolveScreen() {
     onNext,
     onPlayPause,
     onSpeedChange,
-  } = useSolveSession()
+  } = useSolveSession(initialState)
 
   const description = currentMove ? describeLayer(currentMove) : null
   const total = solutionMoves.length
@@ -184,6 +193,12 @@ export function SolveScreen() {
 
           {!solverReady && !solveError && <p className="hint">Preparing solver…</p>}
           {solveError && <p className="solve-error">{solveError}</p>}
+
+          {onEditColors && (
+            <button className="btn-link" onClick={onEditColors}>
+              Enter colors manually
+            </button>
+          )}
         </div>
       </div>
     </main>

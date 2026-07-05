@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FACE_ORDER, faceOf, faceletAt } from '../../src/core/facelets'
+import { FACE_ORDER, faceOf, faceletAt, setFaceletAt } from '../../src/core/facelets'
 import { SOLVED } from '../../src/core/types'
 import type { Face, FaceletString } from '../../src/core/types'
 
@@ -45,5 +45,31 @@ describe('faceletAt / faceOf — round trip', () => {
   it('reflects the URFDLB face order (D3) in the string layout', () => {
     const order: Face[] = ['U', 'R', 'F', 'D', 'L', 'B']
     expect(FACE_ORDER).toEqual(order)
+  })
+})
+
+describe('setFaceletAt', () => {
+  it('repaints only the targeted sticker', () => {
+    const repainted = setFaceletAt(SOLVED, 'F', 0, 'R')
+    expect(faceletAt(repainted, 'F', 0)).toBe('R')
+    for (const face of FACE_ORDER) {
+      for (let index = 0; index < 9; index++) {
+        if (face === 'F' && index === 0) continue
+        expect(faceletAt(repainted, face, index)).toBe(faceletAt(SOLVED, face, index))
+      }
+    }
+  })
+
+  it('leaves the input string untouched', () => {
+    setFaceletAt(SOLVED, 'U', 4, 'D')
+    expect(SOLVED).toBe('UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB')
+  })
+
+  it('round trips through faceOf after repainting every sticker of a face', () => {
+    let s = SOLVED
+    for (let index = 0; index < 9; index++) {
+      s = setFaceletAt(s, 'L', index, 'B')
+    }
+    expect(faceOf(s, 'L')).toEqual(Array(9).fill('B'))
   })
 })
