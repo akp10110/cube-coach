@@ -141,6 +141,11 @@ const VARIANCE_CAP = 1500
 // median RGB (see samplePatch) already rejects most of the damage.
 const GLARE_PENALTY_WEIGHT = 0.7
 
+/** Below this confidence, a sticker is treated as "unsure" — the live scan
+ *  overlay (PR-14) and the review screen's highlighting (PR-15) both use
+ *  this same cutoff so the two stay visually consistent. */
+export const LOW_CONFIDENCE_THRESHOLD = 0.5
+
 /** `classifyColor` plus the glare penalty from a sample's patch variance
  *  (PR-13's third hard case: median rejects glare pixels from the color
  *  itself, but a high-variance patch still deserves less trust). */

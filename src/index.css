@@ -549,6 +549,15 @@ body {
   line-height: 1.5;
 }
 
+/* PR-15: confidence-based "unsure" note on the scan review screen. */
+.scan-unsure-note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--cc-text-2);
+  text-align: center;
+  line-height: 1.5;
+}
+
 /* PR-12: camera scan screen skeleton (design-mocks.html screen 3). */
 
 .scan-shell {

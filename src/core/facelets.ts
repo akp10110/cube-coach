@@ -1,4 +1,4 @@
-import type { Face, FaceletString } from './types'
+import type { Face, FaceletString, FaceScan } from './types'
 
 /** Canonical URFDLB face order (D3) — index of a face within the 54-char string. */
 export const FACE_ORDER: readonly Face[] = ['U', 'R', 'F', 'D', 'L', 'B']
@@ -46,4 +46,35 @@ export function setFaceletAt(
 ): FaceletString {
   const position = FACE_POSITIONS[face][index]
   return s.slice(0, position) + color + s.slice(position + 1)
+}
+
+/** Builds a facelet string from a completed scan's per-face classifications
+ *  (PR-15) — the inverse of `faceOf`, one `FaceScan` per face, each already
+ *  in row-major order (D3/`FaceScan`'s own contract). */
+export function facesToFaceletString(faces: Readonly<Record<Face, FaceScan>>): FaceletString {
+  const chars = new Array<string>(54)
+  for (const face of FACE_ORDER) {
+    FACE_POSITIONS[face].forEach((position, index) => {
+      chars[position] = faces[face].colors[index]
+    })
+  }
+  return chars.join('')
+}
+
+/** Absolute facelet positions (0..53) whose classification confidence is
+ *  below `threshold` — PR-15's confidence-based highlighting on the scan
+ *  review screen. Faces not yet present in `faces` contribute nothing. */
+export function lowConfidencePositions(
+  faces: Partial<Readonly<Record<Face, FaceScan>>>,
+  threshold: number,
+): number[] {
+  const positions: number[] = []
+  for (const face of FACE_ORDER) {
+    const scan = faces[face]
+    if (!scan) continue
+    scan.confidence.forEach((confidence, index) => {
+      if (confidence < threshold) positions.push(FACE_POSITIONS[face][index])
+    })
+  }
+  return positions
 }

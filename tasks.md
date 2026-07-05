@@ -304,7 +304,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Scope:** fixed capture order U, R, F, D, L, B with on-screen instructions ("Hold the WHITE center facing the camera, GREEN center on top" — write the exact hold instruction per face so orientation is unambiguous; document the chosen convention in a comment AND in the UI). Live per-sticker classification preview on the grid overlay; auto-capture when all 9 stickers hold stable classification for ~1s, plus a manual capture button. Progress: mini unfolded cube filling in as faces land.
 - **Depends:** PR-13.
 
-#### ☐ PR-15 `[S]` Review & correct + handoff to solve
+#### ☑ PR-15 `[S]` Review & correct + handoff to solve
 - **Scope:** after 6 faces: full unfolded cube with confidence-based highlighting (low-confidence stickers outlined), tap-to-fix reusing the PR-10 editor component, `validate()` gate, then into the solve flow. "Rescan face X" action. Persist `ScanSession` to `sessionStorage` so an accidental refresh doesn't lose 5 scanned faces.
 - **Depends:** PR-14, PR-10.
 

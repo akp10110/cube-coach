@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { FACE_ORDER, faceOf, faceletAt, setFaceletAt } from '../../src/core/facelets'
+import {
+  FACE_ORDER,
+  facesToFaceletString,
+  faceOf,
+  faceletAt,
+  lowConfidencePositions,
+  setFaceletAt,
+} from '../../src/core/facelets'
 import { SOLVED } from '../../src/core/types'
-import type { Face, FaceletString } from '../../src/core/types'
+import type { Face, FaceletString, FaceScan } from '../../src/core/types'
 
 describe('faceletAt / faceOf — solved state', () => {
   it('every sticker on the solved cube matches its own face', () => {
@@ -71,5 +78,46 @@ describe('setFaceletAt', () => {
       s = setFaceletAt(s, 'L', index, 'B')
     }
     expect(faceOf(s, 'L')).toEqual(Array(9).fill('B'))
+  })
+})
+
+function faceScansOf(s: FaceletString): Record<Face, FaceScan> {
+  const result = {} as Record<Face, FaceScan>
+  for (const face of FACE_ORDER) {
+    result[face] = { colors: faceOf(s, face), confidence: Array(9).fill(1) }
+  }
+  return result
+}
+
+describe('facesToFaceletString', () => {
+  it('reconstructs SOLVED from its own per-face scans', () => {
+    expect(facesToFaceletString(faceScansOf(SOLVED))).toBe(SOLVED)
+  })
+
+  it('reconstructs an arbitrary scrambled state from its per-face scans', () => {
+    const scrambled = setFaceletAt(SOLVED, 'F', 0, 'R')
+    expect(facesToFaceletString(faceScansOf(scrambled))).toBe(scrambled)
+  })
+})
+
+describe('lowConfidencePositions', () => {
+  it('is empty when every sticker meets the threshold', () => {
+    expect(lowConfidencePositions(faceScansOf(SOLVED), 0.5)).toEqual([])
+  })
+
+  it('finds exactly the stickers below threshold, across faces', () => {
+    const faces = faceScansOf(SOLVED)
+    faces.U = { ...faces.U, confidence: faces.U.confidence.map((c, i) => (i === 3 ? 0.2 : c)) }
+    faces.R = { ...faces.R, confidence: faces.R.confidence.map((c, i) => (i === 8 ? 0.4 : c)) }
+
+    const positions = lowConfidencePositions(faces, 0.5)
+    expect(positions.sort((a, b) => a - b)).toEqual([3, 17])
+  })
+
+  it('skips faces that are not present yet', () => {
+    const faces = faceScansOf(SOLVED)
+    faces.U = { ...faces.U, confidence: faces.U.confidence.map(() => 0.1) }
+    const partial: Partial<Record<Face, FaceScan>> = { U: faces.U }
+    expect(lowConfidencePositions(partial, 0.5)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8])
   })
 })
