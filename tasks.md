@@ -221,7 +221,7 @@ export function isSolved(s: FaceletString): boolean;
   - `parseMoves(formatMoves(x))` round-trips.
 - **Depends:** PR-01.
 
-#### ☐ PR-03 `[S]` Scramble generator + isSolved
+#### ☑ PR-03 `[S]` Scramble generator + isSolved
 - **Scope:** `scramble.ts`, `isSolved`. Constraints per the contract comment (no same-face repeats, no immediate inverse; also forbid same-axis triples like `L R L`).
 - **Tests:** 500 random scrambles satisfy constraints; scrambled ≠ solved; applying `invertMoves(scramble)` restores SOLVED.
 - **Depends:** PR-02.
