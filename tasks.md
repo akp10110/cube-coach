@@ -212,7 +212,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Tests:** solved-state lookups; round-trip face extraction.
 - **Depends:** PR-00.
 
-#### ☐ PR-02 `[O]` Move engine
+#### ☑ PR-02 `[O]` Move engine
 - **Scope:** `moves.ts`. Implement `applyMove` as permutation tables: for each of the 18 moves, a precomputed array `perm[54]` where `next[i] = prev[perm[i]]`. Derive the 6 quarter-turn base permutations by hand ONCE (documented with an ASCII diagram of the affected stickers in a code comment); build `'` as 3× and `2` as 2× application. `invertMove/s`, `parseMoves`, `formatMoves`.
 - **Tests (mandatory, this is the foundation everything trusts):**
   - `applyMove(SOLVED, m)` then inverse returns SOLVED, for all 18 moves.
