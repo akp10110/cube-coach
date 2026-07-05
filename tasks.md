@@ -226,7 +226,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Tests:** 500 random scrambles satisfy constraints; scrambled ≠ solved; applying `invertMoves(scramble)` restores SOLVED.
 - **Depends:** PR-02.
 
-#### ☐ PR-04 `[O]` Validation
+#### ☑ PR-04 `[O]` Validation
 - **Scope:** `validate.ts` implementing every `ValidationIssue` kind: length, per-color counts, center permutation, piece validity (each of the 12 edge cubies and 8 corner cubies must carry a legal, distinct color combination — e.g. no edge with two opposite colors, no duplicate pieces), edge-orientation sum even, corner-orientation sum ≡ 0 (mod 3), permutation parity (edge permutation parity must equal corner permutation parity).
 - **Design note:** build an internal cubie-level decomposition (facelets → 12 edges + 8 corners with orientation). Export it from an internal module — the LBL solver (Phase 6) will reuse it. Keep it out of `types.ts`.
 - **Tests:** SOLVED validates ok; each issue kind has a constructed fixture that triggers it and ONLY it where possible; every random scramble of SOLVED validates ok (1,000 cases); single twisted corner / flipped edge / swapped pair fixtures fail with the right issue.
