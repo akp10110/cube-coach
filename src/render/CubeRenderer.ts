@@ -1,8 +1,15 @@
 import * as THREE from 'three'
-import type { Face, FaceletString } from '../core/types'
+import type { Face, FaceletString, Move } from '../core/types'
 import { faceletAt } from '../core/facelets'
 import { CUBE_BODY_COLOR, STICKER_COLORS } from './colors'
-import { CUBELET_COORDS, MAPPINGS_BY_CUBELET, cubeletKey, type LocalFace } from './cubeletMap'
+import {
+  CUBELET_COORDS,
+  MAPPINGS_BY_CUBELET,
+  cubeletKey,
+  type Axis,
+  type CubeletCoord,
+  type LocalFace,
+} from './cubeletMap'
 
 const CUBELET_SIZE = 0.95
 const SPACING = 1.02
@@ -16,9 +23,60 @@ interface Cubelet {
   materials: THREE.MeshBasicMaterial[]
   /** localFace -> (face, index) into the facelet string, only for outer faces. */
   stickers: Partial<Record<LocalFace, { face: Face; index: number }>>
+  /** Fixed grid coordinate this cubelet's mesh always rests at between moves. */
+  coord: CubeletCoord
 }
 
-/** Renders a static 3D cube for a given facelet state (D6). No move animation — see PR-07. */
+type MoveAxis = 'x' | 'y' | 'z'
+
+/**
+ * Per-face quarter-turn spec: which grid layer the move affects and the
+ * signed rotation (radians) of a CLOCKWISE-viewed-from-outside quarter turn.
+ *
+ * Derived from the coordinate system in cubeletMap.ts (x:-1=L/+1=R,
+ * y:-1=D/+1=U, z:-1=B/+1=F) and cross-checked against the facelet cycles
+ * documented in moves.ts: for each face, rotating the layer by the angle
+ * below and applying the standard axis-rotation matrix moves stickers along
+ * that exact cycle (e.g. U's `F -> L -> B -> R -> F` matches -90 deg about Y).
+ * Faces whose outward normal is the POSITIVE axis direction (U/R/F) turn -90
+ * deg for a clockwise quarter; faces whose normal is NEGATIVE (D/L/B) turn
+ * +90 deg — the two are mirror images of the same physical turn.
+ */
+const MOVE_AXIS: Record<Face, { axis: MoveAxis; layer: Axis; quarterAngle: number }> = {
+  U: { axis: 'y', layer: 1, quarterAngle: -Math.PI / 2 },
+  D: { axis: 'y', layer: -1, quarterAngle: Math.PI / 2 },
+  R: { axis: 'x', layer: 1, quarterAngle: -Math.PI / 2 },
+  L: { axis: 'x', layer: -1, quarterAngle: Math.PI / 2 },
+  F: { axis: 'z', layer: 1, quarterAngle: -Math.PI / 2 },
+  B: { axis: 'z', layer: -1, quarterAngle: Math.PI / 2 },
+}
+
+const AXIS_INDEX: Record<MoveAxis, 0 | 1 | 2> = { x: 0, y: 1, z: 2 }
+
+function easeInOutQuad(t: number): number {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+}
+
+function angleForMove(move: Move): { axis: MoveAxis; layer: Axis; angle: number } {
+  const face = move[0] as Face
+  const modifier = move.slice(1)
+  const spec = MOVE_AXIS[face]
+  const angle =
+    modifier === '2'
+      ? spec.quarterAngle * 2
+      : modifier === "'"
+        ? -spec.quarterAngle
+        : spec.quarterAngle
+  return { axis: spec.axis, layer: spec.layer, angle }
+}
+
+/** Renders a 3D cube for a given facelet state (D6) and animates quarter/half
+ *  turns of a single layer (PR-07). Colors are always keyed by fixed grid
+ *  position (see setState), so a move's visual effect is: tween the 9
+ *  affected cubelets through the physical turn, then snap them back to their
+ *  resting grid transform and recolor via setState — this is what the PR-07
+ *  "bake to facelets" requirement means here, and it is what eliminates any
+ *  tween float drift regardless of how many moves have played. */
 export class CubeRenderer {
   private readonly canvas: HTMLCanvasElement
   private readonly renderer: THREE.WebGLRenderer
@@ -75,6 +133,58 @@ export class CubeRenderer {
     }
   }
 
+  /**
+   * Animates one move: attaches the 9 affected cubelets to a temporary pivot,
+   * tweens the pivot's rotation through the turn (ease-in-out), then bakes —
+   * detaches the cubelets, snaps them back to their fixed resting transform,
+   * and recolors via setState from `nextState` so the result is pixel-exact
+   * regardless of prior tween drift (PR-07 hard requirement).
+   */
+  animateMove(move: Move, nextState: FaceletString, durationMs: number): Promise<void> {
+    if (this.disposed) return Promise.resolve()
+
+    const { axis, layer, angle } = angleForMove(move)
+    const axisIndex = AXIS_INDEX[axis]
+    const layerCubelets = this.cubelets.filter((c) => c.coord[axisIndex] === layer)
+
+    const pivot = new THREE.Group()
+    this.cubeGroup.add(pivot)
+    for (const cubelet of layerCubelets) pivot.attach(cubelet.mesh)
+
+    return new Promise((resolve) => {
+      const start = performance.now()
+      const step = (): void => {
+        if (this.disposed) {
+          resolve()
+          return
+        }
+        const elapsed = performance.now() - start
+        const t = Math.min(1, durationMs <= 0 ? 1 : elapsed / durationMs)
+        const eased = easeInOutQuad(t)
+        pivot.rotation[axis] = angle * eased
+
+        if (t >= 1) {
+          for (const cubelet of layerCubelets) {
+            this.cubeGroup.attach(cubelet.mesh)
+            cubelet.mesh.position.set(
+              cubelet.coord[0] * SPACING,
+              cubelet.coord[1] * SPACING,
+              cubelet.coord[2] * SPACING,
+            )
+            cubelet.mesh.quaternion.identity()
+          }
+          this.cubeGroup.remove(pivot)
+          this.setState(nextState)
+          resolve()
+          return
+        }
+
+        requestAnimationFrame(step)
+      }
+      requestAnimationFrame(step)
+    })
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
@@ -108,7 +218,7 @@ export class CubeRenderer {
     mesh.position.set(coord[0] * SPACING, coord[1] * SPACING, coord[2] * SPACING)
     this.cubeGroup.add(mesh)
 
-    return { mesh, materials, stickers }
+    return { mesh, materials, stickers, coord }
   }
 
   private applyOrientation(): void {
