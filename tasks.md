@@ -286,7 +286,7 @@ export function isSolved(s: FaceletString): boolean;
 
 ### Phase 5 — Camera scanning
 
-#### ☐ PR-12 `[S]` Camera plumbing
+#### ☑ PR-12 `[S]` Camera plumbing
 - **Scope:** `scan/camera.ts`: `getUserMedia` wrapper — request rear camera on mobile (`facingMode: 'environment'`), default cam on desktop, mirrored preview on desktop only. Permission-denied and no-camera states with instructions + "enter colors manually instead" escape hatch to `/edit`. Scan screen skeleton: live video, centered square guide with 3×3 grid overlay (canvas on top).
 - **Depends:** PR-09.
 

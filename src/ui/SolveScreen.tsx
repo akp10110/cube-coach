@@ -10,12 +10,14 @@ export interface SolveScreenProps {
   initialState?: FaceletString
   /** Present when the app can navigate to the manual editor (PR-10). */
   onEditColors?: () => void
+  /** Present when the app can navigate to the camera scan screen (PR-12). */
+  onScanCube?: () => void
 }
 
 /** PR-08: real app layout (design-mocks.html screen 2) — header, cube stage,
  *  control panel with follow-mode move card + "I did it", and the secondary
  *  watch-mode transport (prev/play-pause/next/speed). */
-export function SolveScreen({ initialState, onEditColors }: SolveScreenProps) {
+export function SolveScreen({ initialState, onEditColors, onScanCube }: SolveScreenProps) {
   const {
     attachCanvas,
     solverReady,
@@ -194,6 +196,11 @@ export function SolveScreen({ initialState, onEditColors }: SolveScreenProps) {
           {!solverReady && !solveError && <p className="hint">Preparing solver…</p>}
           {solveError && <p className="solve-error">{solveError}</p>}
 
+          {onScanCube && (
+            <button className="btn-link" onClick={onScanCube}>
+              Scan my cube
+            </button>
+          )}
           {onEditColors && (
             <button className="btn-link" onClick={onEditColors}>
               Enter colors manually

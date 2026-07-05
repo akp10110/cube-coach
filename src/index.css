@@ -548,3 +548,78 @@ body {
   color: #f3c36b;
   line-height: 1.5;
 }
+
+/* PR-12: camera scan screen skeleton (design-mocks.html screen 3). */
+
+.scan-shell {
+  max-width: 380px;
+}
+
+.scan-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 26px 16px;
+}
+
+.scan-viewport {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0b0d10;
+}
+
+.scan-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scan-video.is-mirrored {
+  transform: scaleX(-1);
+}
+
+.scan-guide-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.scan-starting {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: 13px;
+  color: var(--cc-text-2);
+  background: rgba(11, 13, 16, 0.6);
+}
+
+.scan-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 280px;
+  padding: 12px 4px 0;
+}
+
+.scan-error-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.scan-error-detail {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--cc-text-2);
+  line-height: 1.6;
+}
