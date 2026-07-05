@@ -1,0 +1,7 @@
+dist
+node_modules
+package-lock.json
+
+# Architect-owned docs — not formatted by tooling
+tasks.md
+design-mocks.html
