@@ -207,7 +207,7 @@ export function isSolved(s: FaceletString): boolean;
 
 ### Phase 1 — Core cube engine (pure TS)
 
-#### ☐ PR-01 `[S]` Contracts + facelet helpers
+#### ☑ PR-01 `[S]` Contracts + facelet helpers
 - **Scope:** `src/core/types.ts` copied verbatim from section 4. `facelets.ts` with the two helpers. Constant tables mapping (face, index) → position 0..53.
 - **Tests:** solved-state lookups; round-trip face extraction.
 - **Depends:** PR-00.
