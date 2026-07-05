@@ -300,7 +300,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Tests:** fixture `ImageData` patches (generate synthetic patches in tests + at least a handful of hardcoded real-world RGB triples per color, including warm-light white and dim orange) classify correctly; circular hue distance unit-tested (hue 358 vs 2 must be "close").
 - **Depends:** PR-12 (types only; the module itself is pure and testable without it).
 
-#### ☐ PR-14 `[S]` Guided 6-face scan flow
+#### ☑ PR-14 `[S]` Guided 6-face scan flow
 - **Scope:** fixed capture order U, R, F, D, L, B with on-screen instructions ("Hold the WHITE center facing the camera, GREEN center on top" — write the exact hold instruction per face so orientation is unambiguous; document the chosen convention in a comment AND in the UI). Live per-sticker classification preview on the grid overlay; auto-capture when all 9 stickers hold stable classification for ~1s, plus a manual capture button. Progress: mini unfolded cube filling in as faces land.
 - **Depends:** PR-13.
 
