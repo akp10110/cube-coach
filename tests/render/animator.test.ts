@@ -3,6 +3,7 @@ import {
   backStep,
   canStepBack,
   canStepForward,
+  clearPendingMoves,
   enqueueMoves,
   forwardStep,
   initialQueueState,
@@ -109,5 +110,23 @@ describe('QueueState (pure queue/cursor logic)', () => {
     expect(canStepForward(state)).toBe(true)
     const next = forwardStep(state)
     expect(next.move).toBe('R2')
+  })
+
+  it('clearPendingMoves drops the unplayed tail but keeps played moves and cursor', () => {
+    let state = enqueueMoves(initialQueueState(), ['U', 'R', "F'", 'D2'] as Move[])
+    state = forwardStep(state).state // played U, cursor 1
+    state = forwardStep(state).state // played R, cursor 2
+
+    const cleared = clearPendingMoves(state)
+    expect(cleared.moves).toEqual(['U', 'R'])
+    expect(cleared.cursor).toBe(2)
+    expect(canStepForward(cleared)).toBe(false)
+    expect(canStepBack(cleared)).toBe(true)
+  })
+
+  it('clearPendingMoves is a no-op once the queue has no unplayed tail', () => {
+    const state = enqueueMoves(initialQueueState(), ['U'] as Move[])
+    const stepped = forwardStep(state).state
+    expect(clearPendingMoves(stepped)).toEqual(stepped)
   })
 })

@@ -30,6 +30,12 @@ body {
   padding: 24px 16px;
 }
 
+@media (max-width: 480px) {
+  body {
+    padding: 0;
+  }
+}
+
 /* Section 9: a dark, quiet stage — the cube is the only colorful thing on screen. */
 
 .app-shell {
@@ -40,10 +46,21 @@ body {
   overflow: hidden;
 }
 
+@media (max-width: 480px) {
+  .app-shell {
+    width: 100%;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+}
+
 .app-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--cc-divider);
 }
@@ -106,9 +123,15 @@ body {
 }
 
 @media (max-width: 640px) {
+  .cube-stage {
+    padding: 16px 12px 4px;
+  }
+
   .control-panel {
     border-left: none;
     border-top: 1px solid var(--cc-divider);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -160,11 +183,112 @@ body {
   color: var(--cc-text-2);
 }
 
+.move-card-empty {
+  position: relative;
+}
+
 .move-card-empty p {
   margin: 0;
   font-size: 14px;
   color: var(--cc-text-2);
   text-align: center;
+}
+
+/* Small "Solved!" celebration (PR-09) — the full-screen version (stats,
+ * "Solve another") is design-mocks.html screen 7, built in PR-23. */
+.move-card-empty.is-celebrating p {
+  color: var(--cc-text);
+  font-size: 16px;
+  font-weight: 500;
+  animation: cc-solved-pulse 0.5s ease;
+}
+
+.confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.confetti i {
+  position: absolute;
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  opacity: 0;
+  animation: cc-confetti-fall 0.9s ease-out forwards;
+}
+
+.confetti i:nth-child(1) {
+  top: 8px;
+  left: 18%;
+  background: #ffd500;
+  animation-delay: 0ms;
+}
+.confetti i:nth-child(2) {
+  top: 4px;
+  left: 34%;
+  background: #8b7cf6;
+  border-radius: 50%;
+  animation-delay: 60ms;
+}
+.confetti i:nth-child(3) {
+  top: 10px;
+  left: 50%;
+  background: #009b48;
+  animation-delay: 120ms;
+}
+.confetti i:nth-child(4) {
+  top: 2px;
+  left: 64%;
+  background: #ff5800;
+  border-radius: 50%;
+  animation-delay: 40ms;
+}
+.confetti i:nth-child(5) {
+  top: 12px;
+  left: 78%;
+  background: #b71234;
+  animation-delay: 100ms;
+}
+.confetti i:nth-child(6) {
+  top: 6px;
+  left: 90%;
+  background: #0046ad;
+  border-radius: 50%;
+  animation-delay: 80ms;
+}
+
+@keyframes cc-solved-pulse {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cc-confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(34px) rotate(45deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .move-card-empty.is-celebrating p {
+    animation: none;
+  }
+  .confetti i {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .btn-primary {
@@ -257,9 +381,17 @@ body {
 
 .transport {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
+}
+
+@media (max-width: 400px) {
+  .speed-control {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
 }
 
 .transport-btn {

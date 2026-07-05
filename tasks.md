@@ -263,7 +263,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Copy map:** pure function `describeLayer(m: Move): { colorFace: Face; headline: string; detail: string }` in `ui/` with tests; color names derive from the fixed center-color map exported in PR-06.
 - **Depends:** PR-05, PR-07.
 
-#### ☐ PR-09 `[S]` Milestone-1 polish + empty/edge states
+#### ☑ PR-09 `[S]` Milestone-1 polish + empty/edge states
 - **Scope:** Solved-state detection with a small celebration (confetti or pulse — CSS only), disable Solve when already solved, handle "user scrambles during playback" (scramble cancels playback and clears queue), responsive layout pass for phone-width, keyboard: space = play/pause, arrows = step.
 - **Depends:** PR-08.
 

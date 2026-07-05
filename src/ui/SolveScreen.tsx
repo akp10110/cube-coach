@@ -79,7 +79,17 @@ export function SolveScreen() {
               <p className="move-detail">{description.detail}</p>
             </div>
           ) : (
-            <div className="move-card move-card-empty">
+            <div className={'move-card move-card-empty' + (isSolved ? ' is-celebrating' : '')}>
+              {isSolved && (
+                <span className="confetti" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              )}
               <p>
                 {isSolved
                   ? 'Solved!'
