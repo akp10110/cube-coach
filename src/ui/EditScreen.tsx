@@ -4,18 +4,8 @@ import { SOLVED } from '../core/types'
 import { FACE_ORDER, FACE_POSITIONS, faceOf, setFaceletAt } from '../core/facelets'
 import { localizeIssue, validate } from '../core/validate'
 import { FACE_COLOR_NAMES, STICKER_COLORS } from '../render/colors'
+import { CROSS_LAYOUT } from './crossLayout'
 import { describeIssue } from './describeIssue'
-
-/** Cross-shaped grid position for each face (design-mocks.html screen 5):
- *  U above F, D below F, L/B/R in a row either side of F. */
-const CROSS_LAYOUT: Readonly<Record<Face, { column: number; row: number }>> = {
-  U: { column: 2, row: 1 },
-  L: { column: 1, row: 2 },
-  F: { column: 2, row: 2 },
-  R: { column: 3, row: 2 },
-  B: { column: 4, row: 2 },
-  D: { column: 2, row: 3 },
-}
 
 export interface EditScreenProps {
   /** Called with the validated cube state once the user confirms it. */
