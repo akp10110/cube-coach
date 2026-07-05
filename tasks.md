@@ -290,7 +290,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Scope:** `scan/camera.ts`: `getUserMedia` wrapper — request rear camera on mobile (`facingMode: 'environment'`), default cam on desktop, mirrored preview on desktop only. Permission-denied and no-camera states with instructions + "enter colors manually instead" escape hatch to `/edit`. Scan screen skeleton: live video, centered square guide with 3×3 grid overlay (canvas on top).
 - **Depends:** PR-09.
 
-#### ☐ PR-13 `[O]` Color sampling + classification
+#### ☑ PR-13 `[O]` Color sampling + classification
 - **Scope:** `scan/colorDetect.ts` (pure — takes `ImageData`, returns samples; NO video/DOM types) + `scan/calibrate.ts`.
   - Sampling: for each of the 9 grid cells, take the median RGB over a small central patch (~15% of cell size) — median, not mean, to reject glare pixels.
   - Convert to HSV.
