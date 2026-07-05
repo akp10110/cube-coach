@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { Face, FaceletString } from '../core/types'
 import { SOLVED } from '../core/types'
-import { FACE_ORDER, faceOf, setFaceletAt } from '../core/facelets'
-import { validate } from '../core/validate'
+import { FACE_ORDER, FACE_POSITIONS, faceOf, setFaceletAt } from '../core/facelets'
+import { localizeIssue, validate } from '../core/validate'
 import { FACE_COLOR_NAMES, STICKER_COLORS } from '../render/colors'
 import { describeIssue } from './describeIssue'
 
@@ -33,6 +33,10 @@ export function EditScreen({ onSolveThisCube }: EditScreenProps) {
   const result = validate(state)
   const firstIssue = result.issues[0] ?? null
 
+  // PR-11: the offending stickers for the banner's issue, where it can be
+  // localized to specific pieces (bad piece, twisted corner, flipped edge).
+  const flaggedPositions = new Set(firstIssue ? localizeIssue(state, firstIssue) : [])
+
   function paintSticker(face: Face, index: number) {
     if (index === 4) return // centers are fixed
     setState((prev) => setFaceletAt(prev, face, index, selectedColor))
@@ -58,17 +62,27 @@ export function EditScreen({ onSolveThisCube }: EditScreenProps) {
               className="face-block"
               style={{ gridColumn: CROSS_LAYOUT[face].column, gridRow: CROSS_LAYOUT[face].row }}
             >
-              {faceOf(state, face).map((color, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  className={'sticker' + (index === 4 ? ' sticker-center' : '')}
-                  style={{ background: STICKER_COLORS[color] }}
-                  aria-label={`${face} face, sticker ${index + 1}: ${FACE_COLOR_NAMES[color]}`}
-                  disabled={index === 4}
-                  onClick={() => paintSticker(face, index)}
-                />
-              ))}
+              {faceOf(state, face).map((color, index) => {
+                const isFlagged = flaggedPositions.has(FACE_POSITIONS[face][index])
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    className={
+                      'sticker' +
+                      (index === 4 ? ' sticker-center' : '') +
+                      (isFlagged ? ' sticker-flagged' : '')
+                    }
+                    style={{ background: STICKER_COLORS[color] }}
+                    aria-label={
+                      `${face} face, sticker ${index + 1}: ${FACE_COLOR_NAMES[color]}` +
+                      (isFlagged ? ' (flagged)' : '')
+                    }
+                    disabled={index === 4}
+                    onClick={() => paintSticker(face, index)}
+                  />
+                )
+              })}
             </div>
           ))}
         </div>

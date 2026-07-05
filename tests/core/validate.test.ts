@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isSolved, validate } from '../../src/core/validate'
+import { isSolved, localizeIssue, validate } from '../../src/core/validate'
 import { applyMove, applyMoves } from '../../src/core/moves'
 import { randomScramble } from '../../src/core/scramble'
 import { CORNER_FACELETS, EDGE_FACELETS } from '../../src/core/cubies'
@@ -144,5 +144,47 @@ describe('validate — permutation-parity', () => {
     const result = validate(swapEdges(SOLVED, 'UF', 'UB'))
     expect(result.ok).toBe(false)
     expect(result.issues).toEqual([{ kind: 'permutation-parity' }])
+  })
+})
+
+describe('localizeIssue — PR-11 sticker highlighting', () => {
+  it("localizes a twisted corner to that corner's 3 facelets", () => {
+    const state = twistCorner(SOLVED, 'UFR')
+    const [issue] = validate(state).issues
+    expect(localizeIssue(state, issue).sort((a, b) => a - b)).toEqual(
+      [...CORNER_FACELETS.UFR].sort((a, b) => a - b),
+    )
+  })
+
+  it("localizes a flipped edge to that edge's 2 facelets", () => {
+    const state = flipEdge(SOLVED, 'UF')
+    const [issue] = validate(state).issues
+    expect(localizeIssue(state, issue).sort((a, b) => a - b)).toEqual(
+      [...EDGE_FACELETS.UF].sort((a, b) => a - b),
+    )
+  })
+
+  it('localizes an invalid-piece issue to every broken piece', () => {
+    // Same fixture as the invalid-piece describe block above: corner UFR
+    // becomes an impossible {U,R,R} combo, and edge UR's compensating edit
+    // (its R-facelet forced to 'F') incidentally duplicates edge UF's color
+    // set — both pieces come back as `invalid-piece`, and (since the issue
+    // itself carries no slot info) localizing either one surfaces both.
+    let state = withFacelet(SOLVED, 20, 'R')
+    state = withFacelet(state, 10, 'F')
+    const expected = [...CORNER_FACELETS.UFR, ...EDGE_FACELETS.UR].sort((a, b) => a - b)
+    for (const issue of validate(state).issues) {
+      expect(localizeIssue(state, issue).sort((a, b) => a - b)).toEqual(expected)
+    }
+  })
+
+  it('returns nothing for issues that cannot be pinned to specific pieces', () => {
+    expect(localizeIssue(SOLVED.slice(0, 53), { kind: 'bad-length' })).toEqual([])
+    expect(localizeIssue(SOLVED, { kind: 'bad-color-count', face: 'U', count: 8 })).toEqual([])
+    expect(localizeIssue(SOLVED, { kind: 'bad-centers' })).toEqual([])
+
+    const swapped = swapEdges(SOLVED, 'UF', 'UB')
+    const [parityIssue] = validate(swapped).issues
+    expect(localizeIssue(swapped, parityIssue)).toEqual([])
   })
 })

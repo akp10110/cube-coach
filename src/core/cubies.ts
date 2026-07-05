@@ -171,3 +171,52 @@ export function decodeEdges(s: FaceletString): EdgeInstance[] {
     return { name, orientation: (orientation < 0 ? 0 : orientation) as 0 | 1 }
   })
 }
+
+/**
+ * PR-11: slot-localization helpers, additive to the internal cubie module.
+ * `validate()` keeps returning only issue *kinds* (the frozen public
+ * contract); these expose which slot(s) drive an `invalid-piece` or a
+ * twisted/flipped-piece issue so the 2D editor can highlight stickers.
+ */
+
+/** Indices into `CORNER_NAMES` whose slot doesn't hold a legal, distinct
+ *  corner — an impossible color combo, or a name already seen at an earlier
+ *  slot. Mirrors the checks behind validate()'s `invalid-piece` issue. */
+export function invalidCornerSlots(corners: readonly CornerInstance[]): number[] {
+  const seen = new Set<string>()
+  const bad: number[] = []
+  corners.forEach((corner, index) => {
+    if (corner.name === undefined || seen.has(corner.name)) {
+      bad.push(index)
+    } else {
+      seen.add(corner.name)
+    }
+  })
+  return bad
+}
+
+/** Indices into `EDGE_NAMES` whose slot doesn't hold a legal, distinct edge. */
+export function invalidEdgeSlots(edges: readonly EdgeInstance[]): number[] {
+  const seen = new Set<string>()
+  const bad: number[] = []
+  edges.forEach((edge, index) => {
+    if (edge.name === undefined || seen.has(edge.name)) {
+      bad.push(index)
+    } else {
+      seen.add(edge.name)
+    }
+  })
+  return bad
+}
+
+/** Indices into `CORNER_NAMES` with nonzero orientation — the corners
+ *  validate()'s `corner-orientation` issue implicates. */
+export function twistedCornerSlots(corners: readonly CornerInstance[]): number[] {
+  return corners.flatMap((corner, index) => (corner.orientation !== 0 ? [index] : []))
+}
+
+/** Indices into `EDGE_NAMES` with nonzero orientation — the edges
+ *  validate()'s `edge-orientation` issue implicates. */
+export function flippedEdgeSlots(edges: readonly EdgeInstance[]): number[] {
+  return edges.flatMap((edge, index) => (edge.orientation !== 0 ? [index] : []))
+}
