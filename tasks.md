@@ -247,7 +247,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Out of scope:** animation.
 - **Depends:** PR-05 (state utilities only), PR-00.
 
-#### ☐ PR-07 `[O]` Move animation queue
+#### ☑ PR-07 `[O]` Move animation queue
 - **Scope:** `render/animator.ts`. API: `enqueue(moves: Move[])`, `play()`, `pause()`, `stepForward()`, `stepBack()`, `setSpeed(multiplier)`, `onMoveComplete(cb)`, `onQueueEmpty(cb)`. Implementation: to animate a move, attach the 9 affected cubelets to a temporary pivot group, tween pivot rotation ±90°/180° (ease-in-out, 300ms base), then bake: detach, snap cubelet positions/rotations to the grid, and call `setState` with the post-move facelets (from `applyMove`) to eliminate float drift. `stepBack` animates the inverse move and moves the cursor back.
 - **Hard requirement:** after ANY sequence of play/pause/step operations, the rendered cube must exactly equal `applyMoves(initial, movesDone)`. The bake-to-facelets step guarantees this — do not skip it.
 - **Tests:** animator's queue/cursor logic extracted pure and unit-tested (which move plays next after arbitrary step/pause sequences). Visual correctness verified on the `/dev` route with a scripted demo button ("scramble 5 moves slowly").

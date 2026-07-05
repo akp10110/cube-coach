@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { applyMoves, parseMoves } from '../core/moves'
+import { randomScramble } from '../core/scramble'
 import { SOLVED } from '../core/types'
+import { Animator } from '../render/animator'
 import { CubeRenderer } from '../render/CubeRenderer'
 
 // Fixed, not random: the point of /dev is a stable state to check by eye
@@ -27,6 +29,47 @@ function CubeCanvas({ label, state }: { label: string; state: string }) {
   )
 }
 
+/** Visual check for PR-07: a demo button that scrambles the cube slowly, one
+ * move at a time, via the real Animator + CubeRenderer.animateMove path —
+ * the same path follow/watch playback will use from PR-08 onward. */
+function AnimatedCubeCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animatorRef = useRef<Animator | null>(null)
+  const [status, setStatus] = useState('idle')
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const renderer = new CubeRenderer(canvas)
+    const animator = new Animator(renderer, SOLVED)
+    animator.setSpeed(0.2) // slow: 300ms base / 0.2 = 1.5s per move
+    animator.onMoveComplete((move, cursor) => setStatus(`played ${move} (move ${cursor})`))
+    animator.onQueueEmpty(() => setStatus('done'))
+    animatorRef.current = animator
+    return () => {
+      animatorRef.current = null
+      renderer.dispose()
+    }
+  }, [])
+
+  const scrambleSlowly = (): void => {
+    const animator = animatorRef.current
+    if (!animator) return
+    animator.enqueue(randomScramble(5))
+    setStatus('playing')
+    animator.play()
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <span>Animated (PR-07)</span>
+      <canvas ref={canvasRef} style={{ width: 360, height: 360 }} />
+      <button onClick={scrambleSlowly}>Scramble 5 moves slowly</button>
+      <span>{status}</span>
+    </div>
+  )
+}
+
 /** Dev-only route (import.meta.env.DEV) for manually verifying the facelet -> 3D
  * mapping against a real cube photo. Not part of the shipped app. */
 export function DevCubeView() {
@@ -36,6 +79,7 @@ export function DevCubeView() {
     <main style={{ display: 'flex', gap: 32, padding: 32, flexWrap: 'wrap' }}>
       <CubeCanvas label="SOLVED" state={SOLVED} />
       <CubeCanvas label={`Scrambled: ${SCRAMBLE.join(' ')}`} state={scrambled} />
+      <AnimatedCubeCanvas />
     </main>
   )
 }
