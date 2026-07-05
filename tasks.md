@@ -255,7 +255,7 @@ export function isSolved(s: FaceletString): boolean;
 
 ### Phase 3 — Milestone 1: scramble → solve → guided playback
 
-#### ☐ PR-08 `[S]` App shell + solve screen UI (follow mode + watch mode)
+#### ☑ PR-08 `[S]` App shell + solve screen UI (follow mode + watch mode)
 - **Scope:** Real app layout per `design-mocks.html` screen 2. Header, cube stage, control panel. "Scramble" button (animates a random 25-move scramble fast, 80ms/move). "Solve" → Kociemba solution → two playback modes:
   - **Follow mode (DEFAULT):** one move at a time, self-paced. The moving layer is highlighted with the accent band — the ENTIRE physical slab: the turning face's 9 stickers PLUS the adjacent 3-sticker strips on neighboring faces. All non-moving stickers dim to ~22% opacity. A curved arrow is drawn IN THE PLANE of the turning face, around its center, animated (flowing dashes). **Arrow sweep must match the turn amount: ~90° arc for quarter turns, ~180° for double turns.** Move card: big plain-language headline "Turn the ⬤ red side" with an inline center-color swatch (centers never move, so the moving face's center color reliably names the side on the user's physical cube); secondary line "Follow the arrow — just one quarter turn" (or "half turn"); notation (`R'`) demoted to a small muted mono chip. A large "I did it" button advances the cursor.
   - **Watch mode (secondary):** play/pause autoplay, prev/next, speed slider (0.5×–2×).
