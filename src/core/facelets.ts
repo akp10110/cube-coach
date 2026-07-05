@@ -34,3 +34,16 @@ export function faceletAt(s: FaceletString, face: Face, index: number): Face {
 export function faceOf(s: FaceletString, face: Face): Face[] {
   return FACE_POSITIONS[face].map((position) => s[position] as Face)
 }
+
+/** Returns a copy of `s` with one sticker repainted — the manual editor's
+ *  (PR-10) only way to mutate a facelet string, since the type itself is
+ *  immutable. */
+export function setFaceletAt(
+  s: FaceletString,
+  face: Face,
+  index: number,
+  color: Face,
+): FaceletString {
+  const position = FACE_POSITIONS[face][index]
+  return s.slice(0, position) + color + s.slice(position + 1)
+}

@@ -276,7 +276,7 @@ export function isSolved(s: FaceletString): boolean;
 
 ### Phase 4 — Manual color input (permanent scan fallback)
 
-#### ☐ PR-10 `[S]` Unfolded cube editor
+#### ☑ PR-10 `[S]` Unfolded cube editor
 - **Scope:** `/edit` screen: unfolded (cross-shaped) 2D cube, tap a sticker → cycle or pick from a 6-color palette. Centers fixed (they define the color scheme). Live validation banner driven by `validate()`: friendly message per `ValidationIssue` kind (write a `describeIssue()` map with tests — e.g. `corner-orientation` → "One corner appears twisted. Check the highlighted corners."). "Solve this cube" button enabled only when valid; routes into the Phase-3 solve screen with this state.
 - **Depends:** PR-09, PR-04.
 

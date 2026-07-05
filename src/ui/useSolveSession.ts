@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Move } from '../core/types'
+import type { FaceletString, Move } from '../core/types'
 import { SOLVED } from '../core/types'
 import { randomScramble } from '../core/scramble'
 import { KociembaSolver } from '../core/solvers/kociemba'
@@ -45,8 +45,11 @@ export interface SolveSessionApi {
  * `solutionStartCursor` marks where the solve's moves begin in that queue so
  * progress/chips/the move-guidance cue only ever reflect the solve, not the
  * scramble shuffle that preceded it.
+ *
+ * `initialState` (PR-10) lets the manual editor hand off a validated cube
+ * straight into this screen instead of always starting from SOLVED.
  */
-export function useSolveSession(): SolveSessionApi {
+export function useSolveSession(initialState: FaceletString = SOLVED): SolveSessionApi {
   const animatorRef = useRef<Animator | null>(null)
   const rendererRef = useRef<CubeRenderer | null>(null)
   const solverRef = useRef<KociembaSolver | null>(null)
@@ -59,8 +62,8 @@ export function useSolveSession(): SolveSessionApi {
   const [solveError, setSolveError] = useState<string | null>(null)
   const [solutionMoves, setSolutionMoves] = useState<readonly Move[]>([])
   const [cursorInSolution, setCursorInSolution] = useState(-1)
-  // The Animator starts life on SOLVED (D3's canonical solved state).
-  const [isCubeSolved, setIsCubeSolved] = useState(true)
+  // The Animator starts life on `initialState` (SOLVED by default, D3).
+  const [isCubeSolved, setIsCubeSolved] = useState(() => isCubeStateSolved(initialState))
   // Gates the celebration: without it, a fresh page load (solved, but the
   // user hasn't touched anything) would celebrate before they've done a thing.
   const [hasInteracted, setHasInteracted] = useState(false)
@@ -86,7 +89,7 @@ export function useSolveSession(): SolveSessionApi {
       if (!canvas) return
 
       const renderer = new CubeRenderer(canvas)
-      const animator = new Animator(renderer, SOLVED)
+      const animator = new Animator(renderer, initialState)
       rendererRef.current = renderer
       animatorRef.current = animator
 
@@ -110,7 +113,7 @@ export function useSolveSession(): SolveSessionApi {
         }
       })
     },
-    [updateCueForIndex],
+    [initialState, updateCueForIndex],
   )
 
   useEffect(() => {
