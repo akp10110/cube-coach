@@ -232,7 +232,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Tests:** SOLVED validates ok; each issue kind has a constructed fixture that triggers it and ONLY it where possible; every random scramble of SOLVED validates ok (1,000 cases); single twisted corner / flipped edge / swapped pair fixtures fail with the right issue.
 - **Depends:** PR-02.
 
-#### ☐ PR-05 `[S]` Kociemba adapter + worker
+#### ☑ PR-05 `[S]` Kociemba adapter + worker
 - **Scope:** `npm i cubejs`. `src/workers/kociemba.worker.ts` hosting init + solve; `solvers/kociemba.ts` implementing the `Solver` interface over `postMessage`. Read the cubejs README first and adapt to its actual API (`Cube.initSolver()`, `Cube.fromString(...)`, `.solve()` — verify names, do not guess). Solver output string → `parseMoves`. Reject before solving if `validate()` fails.
 - **Tests:** (node worker not required — test the adapter's pure parts + an integration test calling cubejs directly, not through the worker) — for 25 random scrambles: solve, apply solution, assert `isSolved`. Assert solution length ≤ 23.
 - **Depends:** PR-03, PR-04.
