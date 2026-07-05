@@ -199,7 +199,7 @@ export function isSolved(s: FaceletString): boolean;
 
 ### Phase 0 — Repository scaffold
 
-#### ☐ PR-00 `[S]` Project scaffold, CI, CLAUDE.md
+#### ☑ PR-00 `[S]` Project scaffold, CI, CLAUDE.md
 - **Scope:** Vite + React + TS strict scaffold named `cubecoach`. ESLint + Prettier. Vitest wired. GitHub Actions: on PR → lint, typecheck, test; on merge to `main` → build + deploy to GitHub Pages (set Vite `base` correctly for Pages). `CLAUDE.md` containing: the conventions from section 5, the locked decisions table from section 2, and the sentence "src/core must never import from react, three, or the DOM."
 - **Also:** ESLint `no-restricted-imports` rule scoped to `src/core/**` banning `react`, `three`, and DOM-touching modules.
 - **Acceptance:** empty app deploys to Pages over HTTPS; CI green; `npm test` runs one placeholder test.
