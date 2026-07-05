@@ -23,7 +23,9 @@
   "overrides": {
     "cubejs": {
       "npm": "file:vendor/stub-npm"
-    }
+    },
+    "@emnapi/core": "1.11.2",
+    "@emnapi/runtime": "1.11.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
