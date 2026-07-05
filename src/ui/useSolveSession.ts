@@ -3,6 +3,7 @@ import type { Move } from '../core/types'
 import { SOLVED } from '../core/types'
 import { randomScramble } from '../core/scramble'
 import { KociembaSolver } from '../core/solvers/kociemba'
+import { isSolved as isCubeStateSolved } from '../core/validate'
 import { Animator } from '../render/animator'
 import { CubeRenderer } from '../render/CubeRenderer'
 
@@ -58,6 +59,11 @@ export function useSolveSession(): SolveSessionApi {
   const [solveError, setSolveError] = useState<string | null>(null)
   const [solutionMoves, setSolutionMoves] = useState<readonly Move[]>([])
   const [cursorInSolution, setCursorInSolution] = useState(-1)
+  // The Animator starts life on SOLVED (D3's canonical solved state).
+  const [isCubeSolved, setIsCubeSolved] = useState(true)
+  // Gates the celebration: without it, a fresh page load (solved, but the
+  // user hasn't touched anything) would celebrate before they've done a thing.
+  const [hasInteracted, setHasInteracted] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   // Mirrors `speed` for the onQueueEmpty callback below, which is registered
@@ -85,6 +91,9 @@ export function useSolveSession(): SolveSessionApi {
       animatorRef.current = animator
 
       animator.onMoveComplete((_move, cursor) => {
+        setIsCubeSolved(isCubeStateSolved(animator.state))
+        setHasInteracted(true)
+
         const start = solutionStartCursorRef.current
         if (start === null) return
         const index = cursor - start
@@ -129,6 +138,9 @@ export function useSolveSession(): SolveSessionApi {
 
     setSolveError(null)
     setIsScrambling(true)
+    // Scrambling mid-playback must cancel it, not append after it (PR-09).
+    animator.stop()
+    setIsPlaying(false)
     solutionStartCursorRef.current = null
     solutionMovesRef.current = []
     setSolutionMoves([])
@@ -191,8 +203,37 @@ export function useSolveSession(): SolveSessionApi {
     animatorRef.current?.setSpeed(next)
   }, [])
 
+  // PR-09: space = play/pause, arrows = step. Ignore keystrokes aimed at a
+  // form control (e.g. the speed slider) so its own native arrow-key/space
+  // behavior isn't hijacked.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+      ) {
+        return
+      }
+      if (event.code === 'Space') {
+        event.preventDefault()
+        onPlayPause()
+      } else if (event.code === 'ArrowRight') {
+        event.preventDefault()
+        onNext()
+      } else if (event.code === 'ArrowLeft') {
+        event.preventDefault()
+        onPrev()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onPlayPause, onNext, onPrev])
+
   const currentMove = solutionMoves[cursorInSolution] ?? null
-  const isSolved = solutionMoves.length > 0 && cursorInSolution >= solutionMoves.length
+  // Celebration-worthy "solved" requires the user to have done something —
+  // otherwise the untouched cube on first load would celebrate immediately.
+  const isSolved = isCubeSolved && hasInteracted
 
   return {
     attachCanvas,
@@ -208,7 +249,7 @@ export function useSolveSession(): SolveSessionApi {
     isPlaying,
     speed,
     canScramble: !isScrambling && !isSolving,
-    canSolve: solverReady && !isScrambling && !isSolving,
+    canSolve: solverReady && !isScrambling && !isSolving && !isCubeSolved,
     onScramble,
     onSolve,
     onIDidIt,

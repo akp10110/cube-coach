@@ -44,6 +44,12 @@ export function backStep(state: QueueState): { move: Move; state: QueueState } {
   return { move: invertMove(state.moves[cursor]), state: { ...state, cursor } }
 }
 
+/** Discards any queued moves beyond `cursor` (e.g. an abandoned solve
+ *  playback), keeping everything already played. */
+export function clearPendingMoves(state: QueueState): QueueState {
+  return { moves: state.moves.slice(0, state.cursor), cursor: state.cursor }
+}
+
 /**
  * Drives `CubeRenderer.animateMove` through a queue of moves (PR-07). Follow
  * mode uses `stepForward`/`stepBack` one at a time; watch mode uses
@@ -61,6 +67,10 @@ export class Animator {
    *  auto-orbit is meant to guide the user through a solve, not to
    *  choreograph the camera during a rapid, no-action-required shuffle. */
   private autoOrbit = true
+  /** Set by `stop()` when a move is mid-tween, so the in-flight `playMove`
+   *  truncates the queue itself once it finishes instead of clobbering the
+   *  truncation done by `stop()` with its stale pre-await queue snapshot. */
+  private pendingClear = false
   private moveCompleteCb?: (move: Move, cursor: number) => void
   private queueEmptyCb?: () => void
 
@@ -118,6 +128,17 @@ export class Animator {
     this.playing = false
   }
 
+  /** Stops autoplay and discards the unplayed tail of the queue (PR-09: a
+   *  scramble mid-playback must cancel it, not append after it). */
+  stop(): void {
+    this.playing = false
+    if (this.animating) {
+      this.pendingClear = true
+    } else {
+      this.queue = clearPendingMoves(this.queue)
+    }
+  }
+
   async stepForward(): Promise<void> {
     if (this.animating || !canStepForward(this.queue)) return
     await this.playMove(forwardStep(this.queue))
@@ -145,7 +166,8 @@ export class Animator {
       autoOrbit: this.autoOrbit,
     })
     this.currentState = nextState
-    this.queue = state
+    this.queue = this.pendingClear ? clearPendingMoves(state) : state
+    this.pendingClear = false
     this.animating = false
     this.moveCompleteCb?.(move, this.queue.cursor)
   }
