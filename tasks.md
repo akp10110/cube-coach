@@ -322,7 +322,7 @@ export function isSolved(s: FaceletString): boolean;
 
 **Visual verification (mandatory in every stage PR, for delivery-manager progress checks):** each stage PR adds/extends a `/dev` demo button — "Scramble, then solve through <stage>" — which scrambles the 3D cube and animates all implemented stages in sequence. The delivery manager must be able to watch, e.g., the white cross visibly form (PR-16), the full white layer complete (PR-17), and so on, on the deployed URL after each merge.
 
-#### ☐ PR-16 `[O]` LBL scaffolding + white cross
+#### ☑ PR-16 `[O]` LBL scaffolding + white cross
 - Orchestrator, stage interface, property-test harness, `white-cross` stage + its completion predicate.
 #### ☐ PR-17 `[O]` White corners
 #### ☐ PR-18 `[O]` Middle-layer edges
