@@ -597,6 +597,28 @@ body {
   height: 100%;
 }
 
+/* Capture-gate feedback beat: brief outline flash while a reading is held
+ * frozen for confirmation (captureGate.ts CAPTURED phase), before the
+ * instruction updates to the next face. */
+.scan-viewport.is-captured {
+  outline: 3px solid var(--cc-accent);
+  outline-offset: -3px;
+}
+
+.scan-dev-gate {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  margin: 0;
+  padding: 2px 6px;
+  font-family: 'SFMono-Regular', ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--cc-accent-text);
+  background: rgba(11, 13, 16, 0.7);
+  border-radius: 4px;
+}
+
 .scan-starting {
   position: absolute;
   inset: 0;
@@ -642,6 +664,13 @@ body {
   line-height: 1.5;
   text-align: center;
   max-width: 280px;
+}
+
+/* Duplicate-center guard message ("That looks like the orange side
+ * again…") — the accent, not an error color: this is a normal, expected
+ * beat in scanning, not a mistake to blame the user for (section 9 rule 4). */
+.scan-instruction.is-notice {
+  color: var(--cc-accent-text);
 }
 
 .scan-controls-row {

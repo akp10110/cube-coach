@@ -3,6 +3,7 @@ import type { Face } from '../core/types'
 import { FACE_ORDER } from '../core/facelets'
 import type { ColorMatch, HSV } from '../scan/colorDetect'
 import { LOW_CONFIDENCE_THRESHOLD } from '../scan/colorDetect'
+import { describeGateState } from '../scan/captureGate'
 import { STICKER_COLORS } from '../render/colors'
 import { CROSS_LAYOUT } from './crossLayout'
 import { holdInstruction } from './scanInstructions'
@@ -148,7 +149,15 @@ export function ScanScreen({
     captureNow,
     centroids,
     calibrated,
-  } = useFaceCapture(status === 'ready', { captureOrder, seedCentroids, seedCalibrated })
+    gateState,
+    gateStateAt,
+    duplicateMessage,
+  } = useFaceCapture(status === 'ready', {
+    captureOrder,
+    seedCentroids,
+    seedCalibrated,
+    priorFaces,
+  })
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
@@ -214,8 +223,15 @@ export function ScanScreen({
           </div>
         ) : (
           <>
-            {currentFace && <p className="scan-instruction">{holdInstruction(currentFace)}</p>}
-            <div className="scan-viewport" style={{ width: GUIDE_SIZE, height: GUIDE_SIZE }}>
+            {currentFace && (
+              <p className={'scan-instruction' + (duplicateMessage ? ' is-notice' : '')}>
+                {duplicateMessage ?? holdInstruction(currentFace)}
+              </p>
+            )}
+            <div
+              className={'scan-viewport' + (gateState.phase === 'captured' ? ' is-captured' : '')}
+              style={{ width: GUIDE_SIZE, height: GUIDE_SIZE }}
+            >
               <video
                 ref={attachVideoAndCamera}
                 className={'scan-video' + (mirrored ? ' is-mirrored' : '')}
@@ -230,6 +246,9 @@ export function ScanScreen({
                 height={GUIDE_SIZE}
               />
               {status === 'starting' && <p className="scan-starting">Starting camera…</p>}
+              {import.meta.env.DEV && (
+                <p className="scan-dev-gate">{describeGateState(gateState, gateStateAt)}</p>
+              )}
             </div>
             <div className="scan-controls-row">
               <ScanProgressMini faces={allFaces} />
