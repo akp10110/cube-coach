@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyMoves, parseMoves } from '../core/moves'
 import { randomScramble } from '../core/scramble'
+import { solveLbl } from '../core/solvers/lbl/orchestrator'
 import { SOLVED } from '../core/types'
 import { Animator } from '../render/animator'
 import { CubeRenderer } from '../render/CubeRenderer'
@@ -70,6 +71,62 @@ function AnimatedCubeCanvas() {
   )
 }
 
+/** Visual check for PR-16 (tasks.md Phase 6): "Scramble, then solve through
+ * <stage>" demo button — scrambles the cube, then animates every
+ * implemented LBL stage in sequence so the delivery manager can watch the
+ * white cross visibly form. Extend (don't replace) as PR-17..20 land more
+ * stages; `solveLbl` already runs the full registry. */
+function LblCubeCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const rendererRef = useRef<CubeRenderer | null>(null)
+  const animatorRef = useRef<Animator | null>(null)
+  const [status, setStatus] = useState('idle')
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const renderer = new CubeRenderer(canvas)
+    renderer.setState(SOLVED)
+    rendererRef.current = renderer
+    return () => {
+      rendererRef.current = null
+      animatorRef.current = null
+      renderer.dispose()
+    }
+  }, [])
+
+  const scrambleThenSolve = (): void => {
+    const renderer = rendererRef.current
+    if (!renderer) return
+
+    const scramble = randomScramble()
+    const scrambled = applyMoves(SOLVED, scramble)
+    const { moves: solveMoves } = solveLbl(scrambled)
+
+    // Fresh Animator each click, always starting from SOLVED, so repeat
+    // clicks scramble+solve relative to a known state rather than whatever
+    // the cube was left showing after the previous run.
+    const animator = new Animator(renderer, SOLVED)
+    animator.setSpeed(0.5)
+    animator.onMoveComplete((move, cursor) => setStatus(`played ${move} (move ${cursor})`))
+    animator.onQueueEmpty(() => setStatus('done'))
+    animatorRef.current = animator
+
+    animator.enqueue([...scramble, ...solveMoves])
+    setStatus('playing')
+    animator.play()
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <span>LBL: white cross (PR-16)</span>
+      <canvas ref={canvasRef} style={{ width: 360, height: 360 }} />
+      <button onClick={scrambleThenSolve}>Scramble, then solve through white cross</button>
+      <span>{status}</span>
+    </div>
+  )
+}
+
 /** Dev-only route (import.meta.env.DEV) for manually verifying the facelet -> 3D
  * mapping against a real cube photo. Not part of the shipped app. */
 export function DevCubeView() {
@@ -80,6 +137,7 @@ export function DevCubeView() {
       <CubeCanvas label="SOLVED" state={SOLVED} />
       <CubeCanvas label={`Scrambled: ${SCRAMBLE.join(' ')}`} state={scrambled} />
       <AnimatedCubeCanvas />
+      <LblCubeCanvas />
     </main>
   )
 }
