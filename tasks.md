@@ -300,19 +300,21 @@ export function isSolved(s: FaceletString): boolean;
 - **Tests:** fixture `ImageData` patches (generate synthetic patches in tests + at least a handful of hardcoded real-world RGB triples per color, including warm-light white and dim orange) classify correctly; circular hue distance unit-tested (hue 358 vs 2 must be "close").
 - **Depends:** PR-12 (types only; the module itself is pure and testable without it).
 
-#### ☑ PR-14 `[S]` Guided 6-face scan flow
-- **Scope:** fixed capture order U, R, F, D, L, B with on-screen instructions ("Hold the WHITE center facing the camera, GREEN center on top" — write the exact hold instruction per face so orientation is unambiguous; document the chosen convention in a comment AND in the UI). Live per-sticker classification preview on the grid overlay; auto-capture when all 9 stickers hold stable classification for ~1s, plus a manual capture button. Progress: mini unfolded cube filling in as faces land.
-- **Depends:** PR-13.
+#### ☑ PR-14 `[S]` Guided 6-face scan flow (auto-capture) — SHIPPED, SUPERSEDED BY PR-26
+- Original auto-capture flow. Shipped but had recurring capture bugs (arm/confidence deadlock, over-firing, capturing the background with no cube present). **Replaced by the tap-to-capture redesign in PR-26.** Left here for history; do not build against this spec.
 
-#### ☑ PR-15 `[S]` Review & correct + handoff to solve
-- **Scope:** after 6 faces: full unfolded cube with confidence-based highlighting (low-confidence stickers outlined), tap-to-fix reusing the PR-10 editor component, `validate()` gate, then into the solve flow. "Rescan face X" action. Persist `ScanSession` to `sessionStorage` so an accidental refresh doesn't lose 5 scanned faces.
+#### ☐ PR-15 `[S]` Review & correct + handoff to solve
+- **Scope:** after 6 faces (each already Confirmed per-face in PR-14): full unfolded cube summary with any still-low-confidence stickers outlined, tap-to-fix reusing the PR-10 editor component, `validate()` gate, then into the solve flow. "Rescan face X" action. Persist `ScanSession` to `sessionStorage` so an accidental refresh doesn't lose confirmed faces.
+- **Note:** per-face freeze-frame confirm now happens in PR-14, so this screen is a final whole-cube check + validation gate, not the first time the user sees detected colors.
 - **Depends:** PR-14, PR-10.
 
 > ### ✅ CHECKPOINT 2 (delivery manager, real cube in hand)
-> 1. Scan your actual cube on your phone in normal room lighting — end to end into a correct solve.
-> 2. Deliberately mis-scan (bad angle/lighting) — review screen lets you fix it; validation catches impossible states with a readable message.
-> 3. Deny camera permission — manual entry path works fully.
-> Expect to iterate on PR-13 thresholds here. File follow-up issues rather than expanding PR-15.
+> 1. Scan your actual cube on your phone in normal room lighting — tap-to-capture each face, confirm on the freeze-frame, end to end into a correct solve.
+> 2. Point the camera at a wall/your face with NO cube — nothing captures (tap still requires a real, confident read; low-confidence cells block Confirm).
+> 3. Deliberately mis-read one sticker — fix it by tapping on the freeze-frame; validation catches impossible states with a readable message.
+> 4. Deny camera permission — manual entry path works fully.
+> 5. Try the live-dots toggle both ways on your phone; tell the architect which felt better so we can set the default.
+> Expect to iterate on PR-13 color thresholds here. File follow-up issues rather than expanding scope.
 
 ### Phase 6 — Learn Mode (custom LBL solver)
 
@@ -357,7 +359,27 @@ export function isSolved(s: FaceletString): boolean;
 
 ---
 
-## 7. Risk register (architect's notes to implementers)
+### Phase 9 — Scan reliability (supersedes the PR-14 auto-capture flow)
+
+#### ☐ PR-26 `[O]` Scan flow tap-to-capture redesign (SUPERSEDES PR-14)
+- **Why:** the shipped auto-capture flow (PR-14) repeatedly misfired — arm/confidence deadlock, over-firing all six faces from one, and capturing a plain background (face/wall/plant) as a valid white face. Root cause: the app tried to decide on its own whether a cube was present and steady. This PR removes that guesswork.
+- **Design principle:** the app never guesses whether a cube is present or steady — the user confirms every capture with a tap. **DELETE** the auto-capture state machine (ARMED/STABLE/COOLDOWN), presence/lattice detection, and the "stable for ~1s" auto-fire — do not port them. **KEEP** the PR-13 color classifier and the duplicate-center guard (both work).
+- **Viewfinder:** L-shaped **corner brackets** framing the target face (NOT a grid over the cube — stickers stay fully visible). Brackets double as alignment/distance guide. Center label names the face to show ("Show the side with the RED center").
+- **Capture:** fixed order U, R, F, D, L, B with an exact hold instruction per face (in a comment AND the UI). Control bar = **Previous / Capture (shutter) / Next**. Tap shutter → **freeze the frame**.
+- **Freeze-frame confirm:** frozen still with the 9 detected colors overlaid + **Confirm / Retake** (no hold-steady pressure; catches misreads per-face; blurry → Retake).
+  - **Confirm DISABLED while any of the 9 cells is low-confidence** (amber dashed).
+  - **Manual fix:** tap any sticker on the frozen frame to set its color (reuse PR-10 editor); fixing the dashed cells unlocks Confirm — never a dead end.
+  - **Duplicate-center guard (KEEP):** never confirm a face whose center color is already stored; show "That's the <color> side again — now show the side with the <color> center."
+- **Live detected-color dots:** small per-cell dot on the live video, behind a toggle, **defaulting OFF** (clean viewfinder). Compared on-device at Checkpoint 2 to set the default.
+- **Progress:** big viewfinder as hero + a **small 3D progress cube** in a corner (reuse PR-06 `CubeRenderer`), filling in face by face. Not a 50/50 split.
+- **Responsive:** phone = viewfinder fills screen, controls + progress cube in a bottom strip; laptop = wide viewfinder with progress cube beside it.
+- **Tests (mandatory):** capture-eligibility is a pure function `{classifications, confidences} → { canConfirm: boolean; blockingCells: number[] }` — unit-test: any low-confidence cell ⇒ canConfirm false; all confident ⇒ true; duplicate center ⇒ blocked with message. Do not change types.ts.
+- **After merge:** re-run CHECKPOINT 2 (now including: camera on a wall/face with no cube captures nothing).
+- **Depends:** PR-13, PR-10, PR-06.
+
+---
+
+## 10. Risk register (architect's notes to implementers)
 
 | Risk | Mitigation already designed in |
 |------|-------------------------------|
@@ -368,17 +390,17 @@ export function isSolved(s: FaceletString): boolean;
 | cubejs API guessed wrong | PR-05 explicitly requires reading its README before wiring |
 | Scope creep in any session | Out-of-scope lists + `BLOCKED:` convention + PR size cap |
 
-## 8. How to run this with Claude Code
+## 11. How to run this with Claude Code
 
 1. Create the GitHub repo, commit this file as `tasks.md` at root.
 2. Per task, start a session with: *"Read tasks.md and CLAUDE.md. Implement PR-NN only. Follow section 4 contracts exactly. Open a PR against main."*
-3. Use the `[S]`/`[O]` tags to pick the model; Opus for PR-02, 04, 07, 13, 16–20, 22.
+3. Use the `[S]`/`[O]` tags to pick the model; Opus for PR-02, 04, 07, 13, 16–20, 22, 26.
 4. Review PRs yourself at minimum for: contract changes (reject), out-of-scope code (reject), missing tests on core (reject).
 5. At each ✅ CHECKPOINT, test on the deployed URL before authorizing the next phase.
 
 ---
 
-## 9. Visual design direction (architect-approved, applies from PR-08 onward)
+## 12. Visual design direction (architect-approved, applies from PR-08 onward)
 
 **STATUS: LOCKED** — approved by the delivery manager. Visual source of truth: **`design-mocks.html` at repo root** (all seven screens: home, solve/follow mode, camera scan, scan review, manual editor, learn checkpoint, celebration). This section plus the mocks define "done" for UI PRs; palette, cue design, card hierarchy, and copy tone are binding, exact pixel spacing is not.
 
