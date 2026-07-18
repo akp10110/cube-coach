@@ -604,8 +604,11 @@ body {
   outline-offset: -3px;
 }
 
-/* Tap-to-fix grid over a frozen frame — invisible hit targets sized to the
- * 9 sampled cells until tapped, when each shows its detected color. */
+/* Tap-to-fix grid over a frozen frame — every cell, sized to the 9 sampled
+ * patches, is its own tap target and opens the color picker below (PR-26
+ * follow-up: the classifier's read is a suggestion, not just the dashed
+ * "unsure" ones — so every cell gets a visible, not just hit-testable,
+ * affordance). */
 .scan-fix-grid {
   position: absolute;
   inset: 36px;
@@ -621,10 +624,17 @@ body {
   padding: 0;
   cursor: pointer;
   opacity: 0.9;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35);
 }
 
 .scan-fix-cell.is-blocking {
   outline: 2px dashed #ef9f27;
+  outline-offset: -2px;
+  opacity: 1;
+}
+
+.scan-fix-cell.is-editing {
+  outline: 2px solid var(--cc-accent);
   outline-offset: -2px;
   opacity: 1;
 }
@@ -810,4 +820,22 @@ body {
   width: 10px;
   height: 10px;
   border-radius: 2px;
+}
+
+/* PR-26 follow-up: /dev-only per-cell HSV + matched-centroid breakdown
+ * behind a freeze-frame's classification (classifyColorDebug), so a real
+ * red/orange (or any near-boundary) misread can be inspected instead of
+ * guessed at during development. */
+.scan-dev-overlay {
+  width: 100%;
+  max-width: 280px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  font-family: 'SFMono-Regular', ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--cc-text-2);
+  background: rgba(11, 13, 16, 0.5);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
 }

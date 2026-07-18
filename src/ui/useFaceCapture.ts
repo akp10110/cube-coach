@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Face } from '../core/types'
 import { FACE_ORDER } from '../core/facelets'
-import type { ColorMatch, HSV, StickerSample } from '../scan/colorDetect'
-import { DEFAULT_CENTROIDS, classifySticker, sampleGrid } from '../scan/colorDetect'
+import type { ClassificationDebugInfo, ColorMatch, HSV, StickerSample } from '../scan/colorDetect'
+import { DEFAULT_CENTROIDS, classifyColorDebug, classifySticker, sampleGrid } from '../scan/colorDetect'
 import { calibrateFromCenters, isFullyCalibrated } from '../scan/calibrate'
 import type { CaptureEligibility } from '../scan/captureEligibility'
 import { evaluateCapture } from '../scan/captureEligibility'
@@ -72,6 +72,10 @@ export interface FaceCaptureApi {
   /** The 9-cell classification (overrides applied) for 'pending'/'captured'
    *  modes, for the tap-to-fix grid; `null` in 'live' mode. */
   grid: ColorMatch[] | null
+  /** Per-cell HSV + nearest/runner-up centroid breakdown behind `grid`, for
+   *  the `/dev` overlay only — `null` in 'live' mode, same as `grid`. Not
+   *  override-adjusted (there's nothing to debug about a manual fix). */
+  gridDebug: ClassificationDebugInfo[] | null
   /** Whether `grid` can be confirmed right now, and why not if not —
    *  `null` outside 'pending' mode. */
   eligibility: CaptureEligibility | null
@@ -105,11 +109,6 @@ export function computeCoverCrop(
 ): { sx: number; sy: number; side: number } {
   const side = Math.min(videoWidth, videoHeight)
   return { sx: (videoWidth - side) / 2, sy: (videoHeight - side) / 2, side }
-}
-
-/** Cycles a color to the next one in `FACE_ORDER`, for tap-to-fix. */
-export function nextFaceColor(color: Face): Face {
-  return FACE_ORDER[(FACE_ORDER.indexOf(color) + 1) % FACE_ORDER.length]
 }
 
 /**
@@ -219,6 +218,12 @@ export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}
     if (currentFace && storedFaces[currentFace]) return classifyReading(storedFaces[currentFace]!)
     return null
   }, [pending, currentFace, storedFaces, classifyReading])
+
+  const gridDebug = useMemo(() => {
+    const reading = pending ?? (currentFace ? storedFaces[currentFace] : undefined)
+    if (!reading) return null
+    return reading.samples.map((s) => classifyColorDebug(s.hsv, centroids))
+  }, [pending, currentFace, storedFaces, centroids])
 
   /** Center colors already spoken for — this instance's own confirmed
    *  captures plus any carried in from a wider scan session (PR-15 rescan). */
@@ -379,6 +384,7 @@ export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}
     liveStickers,
     frameImage,
     grid,
+    gridDebug,
     eligibility,
     captureNow,
     confirmPending,

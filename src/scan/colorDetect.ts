@@ -94,6 +94,21 @@ function colorDistance(a: HSV, b: HSV): number {
   return HUE_WEIGHT * dh + SATURATION_WEIGHT * ds + VALUE_WEIGHT * dv
 }
 
+/** Every centroid ranked by distance to `hsv`, nearest first. The decision
+ *  boundary between any two colors is implicit in this ranking — nearest-
+ *  centroid classification, not a fixed per-color threshold, which is what
+ *  lets calibration (re-anchoring each centroid to this cube's own,
+ *  currently-lit stickers) correctly separate close pairs like red/orange
+ *  even when lighting has shifted both of their absolute hues. */
+function rankCentroids(
+  hsv: HSV,
+  centroids: Readonly<Record<Face, HSV>>,
+): (readonly [Face, number])[] {
+  return FACE_ORDER.map((color) => [color, colorDistance(hsv, centroids[color])] as const).sort(
+    (a, b) => a[1] - b[1],
+  )
+}
+
 function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x))
 }
@@ -111,7 +126,11 @@ const UNCALIBRATED_CONFIDENCE_CAP = 0.7
  * value distance. Confidence comes from the *margin* between the best and
  * second-best centroid, not the raw distance to the winner — an ambiguous
  * sample where two centroids are nearly tied should read as low-confidence
- * regardless of how close either one is in absolute terms.
+ * regardless of how close either one is in absolute terms. This is what
+ * makes the red/orange pair (a narrow hue gap, the hardest pair on a phone
+ * camera) safe: a sample near their boundary doesn't get silently guessed
+ * one way, it drops below `LOW_CONFIDENCE_THRESHOLD` and the freeze-frame
+ * flags it for a tap-to-fix instead.
  *
  * `calibrated` must be `false` while classifying against `DEFAULT_CENTROIDS`
  * (before all six centers are captured) and `true` once classifying against
@@ -122,9 +141,7 @@ export function classifyColor(
   centroids: Readonly<Record<Face, HSV>>,
   calibrated: boolean,
 ): ColorMatch {
-  const ranked = FACE_ORDER.map(
-    (color) => [color, colorDistance(hsv, centroids[color])] as const,
-  ).sort((a, b) => a[1] - b[1])
+  const ranked = rankCentroids(hsv, centroids)
   const [color, best] = ranked[0]
   const [, secondBest] = ranked[1]
 
@@ -132,6 +149,38 @@ export function classifyColor(
   if (!calibrated) confidence = Math.min(confidence, UNCALIBRATED_CONFIDENCE_CAP)
 
   return { color, confidence }
+}
+
+export interface ClassificationDebugInfo {
+  hsv: HSV
+  bestFace: Face
+  bestDistance: number
+  runnerUpFace: Face
+  runnerUpDistance: number
+  /** Raw distance gap to the runner-up, before the `MARGIN_NORMALIZER`
+   *  scaling and clamp that turn it into `classifyColor`'s 0..1
+   *  `confidence`. For the `/dev` overlay only — the classifier itself
+   *  never reads this. */
+  margin: number
+}
+
+/** Dev-only diagnostic: the full nearest/runner-up breakdown behind
+ *  `classifyColor`'s confidence score, for the scan screen's `/dev`
+ *  overlay — lets a real red/orange (or any near-boundary) misread be
+ *  inspected instead of guessed at. */
+export function classifyColorDebug(
+  hsv: HSV,
+  centroids: Readonly<Record<Face, HSV>>,
+): ClassificationDebugInfo {
+  const [[bestFace, bestDistance], [runnerUpFace, runnerUpDistance]] = rankCentroids(hsv, centroids)
+  return {
+    hsv,
+    bestFace,
+    bestDistance,
+    runnerUpFace,
+    runnerUpDistance,
+    margin: runnerUpDistance - bestDistance,
+  }
 }
 
 // Beyond this average per-channel variance, a patch is treated as fully
@@ -209,8 +258,12 @@ export function samplePatch(
   return { rgb, hsv: rgbToHsv(rgb), variance: patchVariance }
 }
 
-/** Fraction of a grid cell's side length used as the sampling patch. */
-const PATCH_FRACTION = 0.15
+// Widened from 0.15: more pixels per patch means the median (already
+// glare-resistant, see samplePatch) has more to work with, and it's a
+// bigger win for confidence stability on a narrow-margin pair like
+// red/orange than it is a risk of spilling onto the sticker's border — a
+// well-framed sticker fills most of its 3x3 cell.
+const PATCH_FRACTION = 0.22
 
 /**
  * Samples all 9 stickers of an already-cropped square guide image (PR-14
