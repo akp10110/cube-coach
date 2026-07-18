@@ -7,7 +7,7 @@ import { FACE_COLOR_NAMES, STICKER_COLORS } from '../render/colors'
 import { CROSS_LAYOUT } from './crossLayout'
 import { holdInstruction } from './scanInstructions'
 import { useCamera } from './useCamera'
-import { nextFaceColor, useFaceCapture } from './useFaceCapture'
+import { useFaceCapture } from './useFaceCapture'
 import type { CapturedFace } from './useFaceCapture'
 
 /** Square viewfinder side length in CSS pixels (design-mocks.html screen 3). */
@@ -135,9 +135,9 @@ function instructionFor(
         ? '1 sticker looks unsure — tap it to fix, or retake.'
         : `${blockingCount} stickers look unsure — tap to fix, or retake.`
     }
-    return 'Looks good — tap Confirm to lock it in.'
+    return 'Looks good — tap any sticker to fix it, or Confirm.'
   }
-  if (mode === 'captured') return 'Tap a sticker to fix it, or retake this face.'
+  if (mode === 'captured') return 'Tap any sticker to fix it, or retake this face.'
   return holdInstruction(face)
 }
 
@@ -164,6 +164,7 @@ export function ScanScreen({
     liveStickers,
     frameImage,
     grid,
+    gridDebug,
     eligibility,
     captureNow,
     confirmPending,
@@ -178,6 +179,18 @@ export function ScanScreen({
   } = useFaceCapture(status === 'ready', { captureOrder, seedCentroids, seedCalibrated, priorFaces })
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [showLiveDots, setShowLiveDots] = useState(false)
+  /** Which cell's color picker is open — any cell, not just low-confidence
+   *  ones (PR-26 follow-up: the classifier's read is a suggestion, the user
+   *  is ground truth). Tagged with the mode/face it was opened on so a
+   *  stale picker from a face just left behind (Confirm, Retake, Previous/
+   *  Next) reads as closed without needing an effect to clear it. */
+  const [rawEditing, setRawEditing] = useState<{ mode: string; face: Face | null; index: number } | null>(
+    null,
+  )
+  const editingIndex =
+    rawEditing && rawEditing.mode === mode && rawEditing.face === currentFace ? rawEditing.index : null
+  const setEditingIndex = (index: number | null) =>
+    setRawEditing(index === null ? null : { mode, face: currentFace, index })
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -284,14 +297,17 @@ export function ScanScreen({
                         key={i}
                         type="button"
                         className={
-                          'scan-fix-cell' + (eligibility?.blockingCells.includes(i) ? ' is-blocking' : '')
+                          'scan-fix-cell' +
+                          (eligibility?.blockingCells.includes(i) ? ' is-blocking' : '') +
+                          (editingIndex === i ? ' is-editing' : '')
                         }
                         style={{ background: STICKER_COLORS[cell.color] }}
                         aria-label={
                           `Sticker ${i + 1}: ${FACE_COLOR_NAMES[cell.color]}` +
                           (eligibility?.blockingCells.includes(i) ? ' (unsure — tap to fix)' : ' (tap to fix)')
                         }
-                        onClick={() => setCellColor(i, nextFaceColor(cell.color))}
+                        aria-expanded={editingIndex === i}
+                        onClick={() => setEditingIndex(editingIndex === i ? null : i)}
                       />
                     ))}
                   </div>
@@ -308,6 +324,31 @@ export function ScanScreen({
                   </button>
                 )}
               </div>
+
+              {editingIndex !== null && grid && (
+                <div
+                  className="palette"
+                  role="group"
+                  aria-label={`Pick a color for sticker ${editingIndex + 1}`}
+                >
+                  {FACE_ORDER.map((face) => (
+                    <button
+                      key={face}
+                      type="button"
+                      className={
+                        'palette-swatch' + (grid[editingIndex].color === face ? ' is-selected' : '')
+                      }
+                      style={{ background: STICKER_COLORS[face] }}
+                      aria-label={FACE_COLOR_NAMES[face]}
+                      aria-pressed={grid[editingIndex].color === face}
+                      onClick={() => {
+                        setCellColor(editingIndex, face)
+                        setEditingIndex(null)
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
 
               <ScanProgressMini faces={allFaces} />
 
@@ -370,6 +411,18 @@ export function ScanScreen({
                   </>
                 )}
               </div>
+
+              {import.meta.env.DEV && mode !== 'live' && gridDebug && (
+                <div className="scan-dev-overlay" aria-hidden="true">
+                  {gridDebug.map((d, i) => (
+                    <div key={i}>
+                      [{i}] h{d.hsv.h.toFixed(0)}° s{d.hsv.s.toFixed(2)} v{d.hsv.v.toFixed(2)} →{' '}
+                      {d.bestFace}(Δ{d.bestDistance.toFixed(2)}) next {d.runnerUpFace}(Δ
+                      {d.runnerUpDistance.toFixed(2)}) margin {d.margin.toFixed(2)}
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )
         )}
