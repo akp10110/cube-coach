@@ -597,26 +597,55 @@ body {
   height: 100%;
 }
 
-/* Capture-gate feedback beat: brief outline flash while a reading is held
- * frozen for confirmation (captureGate.ts CAPTURED phase), before the
- * instruction updates to the next face. */
-.scan-viewport.is-captured {
+/* PR-26: outline while showing a frozen (pending or already-captured)
+ * frame, so it reads clearly as "not live" at a glance. */
+.scan-viewport.is-frozen {
   outline: 3px solid var(--cc-accent);
   outline-offset: -3px;
 }
 
-.scan-dev-gate {
+/* Tap-to-fix grid over a frozen frame — invisible hit targets sized to the
+ * 9 sampled cells until tapped, when each shows its detected color. */
+.scan-fix-grid {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  inset: 36px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.scan-fix-cell {
+  border: none;
+  border-radius: 6px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.9;
+}
+
+.scan-fix-cell.is-blocking {
+  outline: 2px dashed #ef9f27;
+  outline-offset: -2px;
+  opacity: 1;
+}
+
+.scan-dots-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
   margin: 0;
-  padding: 2px 6px;
-  font-family: 'SFMono-Regular', ui-monospace, monospace;
+  padding: 4px 8px;
   font-size: 10px;
-  letter-spacing: 0.02em;
+  color: var(--cc-text);
+  background: rgba(11, 13, 16, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.scan-dots-toggle.is-on {
   color: var(--cc-accent-text);
-  background: rgba(11, 13, 16, 0.7);
-  border-radius: 4px;
+  border-color: var(--cc-accent);
 }
 
 .scan-starting {
@@ -683,6 +712,14 @@ body {
   margin-top: 16px;
 }
 
+/* Confirm/Retake share the row evenly instead of each claiming the
+ * `.btn-primary`/`.btn-secondary` default full width. */
+.scan-controls-row .btn-primary,
+.scan-controls-row .btn-secondary {
+  width: auto;
+  flex: 1;
+}
+
 .scan-mini {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -708,14 +745,20 @@ body {
   border: 1px solid var(--cc-border);
 }
 
-.scan-auto-hint {
+.scan-nav-btn {
   flex: 1;
-  margin: 0;
-  padding: 0 8px;
-  font-size: 11px;
-  color: var(--cc-text-2);
-  line-height: 1.5;
-  text-align: center;
+  padding: 10px 4px;
+  font-size: 13px;
+  color: var(--cc-text);
+  background: none;
+  border: 1px solid var(--cc-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.scan-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .scan-capture-btn {

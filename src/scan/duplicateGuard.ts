@@ -4,10 +4,10 @@ import { FACE_COLOR_NAMES } from '../render/colors'
 /**
  * Duplicate-center guard (tasks.md bug fix): centers are unique on a real
  * cube, so a capture whose center color already belongs to another face in
- * this scan session means the same physical side was presented again — most
- * often the auto-capture over-fire this module's sibling `captureGate.ts`
- * fixes, but also a plain user mistake (forgot to rotate the cube). Either
- * way the capture must never be stored under a second face key.
+ * this scan session means the same physical side was presented again —
+ * usually a plain user mistake (forgot to rotate the cube). Either way the
+ * capture must never be stored under a second face key. Used by
+ * `captureEligibility.ts` to gate Confirm on the tap-to-capture freeze-frame.
  */
 
 /** True if `centerColor` already belongs to another already-captured face. */

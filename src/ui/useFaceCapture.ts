@@ -4,9 +4,8 @@ import { FACE_ORDER } from '../core/facelets'
 import type { ColorMatch, HSV, StickerSample } from '../scan/colorDetect'
 import { DEFAULT_CENTROIDS, classifySticker, sampleGrid } from '../scan/colorDetect'
 import { calibrateFromCenters, isFullyCalibrated, reclassifyAll } from '../scan/calibrate'
-import type { GateState } from '../scan/captureGate'
-import { INITIAL_GATE_STATE, tickGate } from '../scan/captureGate'
-import { duplicateCenterMessage, isDuplicateCenter } from '../scan/duplicateGuard'
+import type { CaptureEligibility } from '../scan/captureEligibility'
+import { evaluateCapture } from '../scan/captureEligibility'
 import { CAPTURE_ORDER } from './scanInstructions'
 
 const SAMPLE_INTERVAL_MS = 200
@@ -18,6 +17,23 @@ export interface CapturedFace {
   colors: Face[]
   confidence: number[]
 }
+
+/** A face whose 9 stickers have been captured and (for `pending`) not yet
+ *  confirmed. `overrides` records manual tap-to-fix corrections by sticker
+ *  index — always trusted over the classifier, and re-applied on top of
+ *  every reclassification so a fix survives recalibration. */
+interface StoredReading {
+  samples: StickerSample[]
+  overrides: Partial<Record<number, Face>>
+  /** JPEG data URL snapshot of the frame the shutter froze, for display. */
+  imageDataUrl: string
+}
+
+interface PendingReading extends StoredReading {
+  face: Face
+}
+
+export type CaptureMode = 'live' | 'pending' | 'captured'
 
 export interface FaceCaptureOptions {
   /** Faces to capture, in order — defaults to the full 6-face `CAPTURE_ORDER`.
@@ -39,35 +55,49 @@ export interface FaceCaptureOptions {
 export interface FaceCaptureApi {
   /** Attach to the same `<video>` element `useCamera` is streaming into. */
   attachVideo: (el: HTMLVideoElement | null) => void
-  /** Face currently being captured; `null` once the capture order is done. */
+  /** Face the cursor is currently on; `null` once `captureOrder` is done. */
   currentFace: Face | null
+  /** 'live': camera feed, awaiting a shutter tap. 'pending': a just-shot
+   *  frame awaiting Confirm/Retake. 'captured': `currentFace` already has a
+   *  confirmed capture (reached via Previous/Next), shown for review/fix. */
+  mode: CaptureMode
   isComplete: boolean
-  /** Finalized captures so far, in the shape of core's `FaceScan`. */
+  /** Finalized (confirmed) captures so far, in the shape of core's `FaceScan`. */
   faces: Partial<Record<Face, CapturedFace>>
-  /** Live per-sticker classification of the current frame, for the overlay;
-   *  `null` before the first frame has been sampled. */
+  /** Live per-sticker classification of the current frame, for the optional
+   *  live-dots overlay — only meaningful in 'live' mode. */
   liveStickers: ColorMatch[] | null
-  /** Finalizes the current face right now instead of waiting for stability. */
+  /** Frozen still for 'pending'/'captured' modes; `null` in 'live' mode. */
+  frameImage: string | null
+  /** The 9-cell classification (overrides applied) for 'pending'/'captured'
+   *  modes, for the tap-to-fix grid; `null` in 'live' mode. */
+  grid: ColorMatch[] | null
+  /** Whether `grid` can be confirmed right now, and why not if not —
+   *  `null` outside 'pending' mode. */
+  eligibility: CaptureEligibility | null
+  /** Shutter: freezes the current live frame — 'live' mode only. */
   captureNow: () => void
+  /** Commits the frozen frame as `currentFace`'s capture — 'pending' only. */
+  confirmPending: () => void
+  /** Discards a pending frame (back to live) or clears an already-captured
+   *  face (back to live) so it can be reshot. */
+  retake: () => void
+  /** Manual tap-to-fix: sets sticker `index` to `color` on whichever
+   *  reading is currently showing (pending or captured). */
+  setCellColor: (index: number, color: Face) => void
+  goPrevious: () => void
+  goNext: () => void
+  canGoPrevious: boolean
+  canGoNext: boolean
   /** Current classification centroids — DEFAULT_CENTROIDS (or `seedCentroids`)
    *  until all six centers are in, then the recalibrated set. */
   centroids: Readonly<Record<Face, HSV>>
   /** Whether `centroids` are trustworthy calibrated centroids. */
   calibrated: boolean
-  /** Capture-gate phase, for the `/dev` overlay (ARMED/STABLE/CAPTURED/COOLDOWN). */
-  gateState: GateState
-  /** Timestamp `gateState` was last computed at (from inside the sample
-   *  tick, not render) — pass to `describeGateState` instead of calling
-   *  `Date.now()` during render. */
-  gateStateAt: number
-  /** Set when the last capture attempt was rejected as a duplicate center;
-   *  the scan screen should show this instead of the normal hold
-   *  instruction until a genuinely new face is captured. */
-  duplicateMessage: string | null
 }
 
 /** Maps a video's native resolution to the centered square crop that
- *  matches the on-screen guide's `object-fit: cover` (PR-14). Pure so it's
+ *  matches the on-screen guide's `object-fit: cover`. Pure so it's
  *  unit-testable without a real `HTMLVideoElement`. */
 export function computeCoverCrop(
   videoWidth: number,
@@ -77,22 +107,24 @@ export function computeCoverCrop(
   return { sx: (videoWidth - side) / 2, sy: (videoHeight - side) / 2, side }
 }
 
+/** Cycles a color to the next one in `FACE_ORDER`, for tap-to-fix. */
+export function nextFaceColor(color: Face): Face {
+  return FACE_ORDER[(FACE_ORDER.indexOf(color) + 1) % FACE_ORDER.length]
+}
+
 /**
- * PR-14/15: drives the guided scan — the full 6-face sequence, or (per
- * `options.captureOrder`) a single-face rescan. Samples the live video
- * ~5x/second, classifies each of the 9 stickers, and feeds the reading
- * through the pure `captureGate` state machine (`src/scan/captureGate.ts`),
- * which decides when a steady reading has held long enough to auto-capture
- * — and, critically, refuses to re-arm immediately after a capture until
- * the classification has actually changed, so a held (not yet rotated)
- * cube can't be captured over and over. A capture whose center color
- * duplicates an already-captured face (`src/scan/duplicateGuard.ts`) is
- * never stored — most often the flip side of the same bug (the gate
- * fired again before the user moved the cube), but also a plain mis-scan.
- * Once all six centers are in, recalibrates from them and reclassifies
- * every face captured so far (tasks.md PR-13's calibrate.ts contract) —
- * this only fires during a full scan, since a single-face rescan never has
- * all six centers in its own `stickerSamples`.
+ * PR-26: drives the tap-to-capture scan flow — the full 6-face sequence, or
+ * (per `options.captureOrder`) a single-face rescan. The app never decides
+ * on its own that a cube is present and steady (that guesswork is what
+ * PR-14's auto-capture got wrong); instead it continuously classifies the
+ * live frame for the optional live-dots overlay, and only freezes a
+ * reading when the user taps the shutter. A frozen reading always needs an
+ * explicit Confirm — blocked while any sticker is low-confidence or the
+ * center duplicates an already-captured face (`captureEligibility.ts`) —
+ * or Retake. Manual per-sticker fixes are always available and always
+ * unblock Confirm, so this is never a dead end. Previous/Next let the user
+ * revisit any face in `captureOrder`, live or already captured, without
+ * losing prior captures.
  */
 export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}): FaceCaptureApi {
   const captureOrder = options.captureOrder ?? CAPTURE_ORDER
@@ -100,29 +132,66 @@ export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}
   const videoElRef = useRef<HTMLVideoElement | null>(null)
   const hiddenCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const latestSamplesRef = useRef<StickerSample[] | null>(null)
-  const gateStateRef = useRef<GateState>(INITIAL_GATE_STATE)
-  const duplicateMessageRef = useRef<string | null>(null)
 
-  const [faceIndex, setFaceIndex] = useState(0)
-  const [stickerSamples, setStickerSamples] = useState<Partial<Record<Face, StickerSample[]>>>({})
-  const [centroids, setCentroids] = useState<Record<Face, HSV>>(
-    options.seedCentroids ?? DEFAULT_CENTROIDS,
+  const [cursorIndex, setCursorIndex] = useState(0)
+  const [storedFaces, setStoredFaces] = useState<Partial<Record<Face, StoredReading>>>({})
+  const [pending, setPending] = useState<PendingReading | null>(null)
+  const [rawLiveStickers, setRawLiveStickers] = useState<ColorMatch[] | null>(null)
+
+  const currentFace = captureOrder[cursorIndex] ?? null
+  const isComplete = captureOrder.every((face) => storedFaces[face] !== undefined)
+  const mode: CaptureMode = pending ? 'pending' : currentFace && storedFaces[currentFace] ? 'captured' : 'live'
+  // The sampling effect below only ever writes `rawLiveStickers` while
+  // `mode === 'live'`, but React state can't be cleared synchronously the
+  // instant `mode` changes without an effect (which lint rightly flags as
+  // cascading-render-prone) — so mask the possibly-stale value here instead.
+  const liveStickers = mode === 'live' ? rawLiveStickers : null
+
+  /** Derived, not stored: recomputed from `storedFaces`' six center samples
+   *  whenever they change, so there's a single source of truth instead of
+   *  state that has to be kept in sync via an effect. */
+  const { centroids, calibrated } = useMemo(() => {
+    const centers: Partial<Record<Face, HSV>> = {}
+    for (const face of FACE_ORDER) {
+      const stored = storedFaces[face]
+      if (stored) centers[face] = stored.samples[4].hsv
+    }
+    if (isFullyCalibrated(centers)) {
+      return { centroids: calibrateFromCenters(centers), calibrated: true }
+    }
+    return {
+      centroids: options.seedCentroids ?? DEFAULT_CENTROIDS,
+      calibrated: options.seedCalibrated ?? false,
+    }
+  }, [storedFaces, options.seedCentroids, options.seedCalibrated])
+
+  /** Classifies a stored/pending reading's 9 samples against the current
+   *  centroids, with manual overrides (always confidence 1) applied on top. */
+  const classifyReading = useCallback(
+    (reading: StoredReading): ColorMatch[] => {
+      const classified = calibrated
+        ? reclassifyAll(reading.samples, centroids)
+        : reading.samples.map((s) => classifySticker(s, centroids, false))
+      return classified.map((c, i) => {
+        const override = reading.overrides[i]
+        return override !== undefined ? { color: override, confidence: 1 } : c
+      })
+    },
+    [centroids, calibrated],
   )
-  const [calibrated, setCalibrated] = useState(options.seedCalibrated ?? false)
-  const [liveStickers, setLiveStickers] = useState<ColorMatch[] | null>(null)
-  const [gateState, setGateState] = useState<GateState>(INITIAL_GATE_STATE)
-  const [gateStateAt, setGateStateAt] = useState(0)
-  const [duplicateMessage, setDuplicateMessage] = useState<string | null>(null)
 
-  const isComplete = faceIndex >= captureOrder.length
-  const currentFace = isComplete ? null : captureOrder[faceIndex]
+  const grid = useMemo(() => {
+    if (pending) return classifyReading(pending)
+    if (currentFace && storedFaces[currentFace]) return classifyReading(storedFaces[currentFace]!)
+    return null
+  }, [pending, currentFace, storedFaces, classifyReading])
 
-  /** Center colors already spoken for — this instance's own captures plus
-   *  any carried in from a wider scan session (PR-15 rescan flow). */
+  /** Center colors already spoken for — this instance's own confirmed
+   *  captures plus any carried in from a wider scan session (PR-15 rescan). */
   const existingCenters = useMemo(() => {
     const own = FACE_ORDER.flatMap((face) => {
-      const samples = stickerSamples[face]
-      return samples ? [classifySticker(samples[4], centroids, calibrated).color] : []
+      const stored = storedFaces[face]
+      return stored ? [classifyReading(stored)[4].color] : []
     })
     const prior = options.priorFaces
       ? FACE_ORDER.flatMap((face) => {
@@ -131,64 +200,20 @@ export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}
         })
       : []
     return [...own, ...prior]
-  }, [stickerSamples, centroids, calibrated, options.priorFaces])
+  }, [storedFaces, classifyReading, options.priorFaces])
 
-  const finalizeFace = useCallback(
-    (samples: StickerSample[]) => {
-      setStickerSamples((prev) => {
-        const face = captureOrder[faceIndex]
-        if (!face) return prev
-        const next = { ...prev, [face]: samples }
-
-        const centers: Partial<Record<Face, HSV>> = {}
-        for (const f of FACE_ORDER) {
-          const s = next[f]
-          if (s) centers[f] = s[4].hsv
-        }
-        if (isFullyCalibrated(centers)) {
-          setCentroids(calibrateFromCenters(centers))
-          setCalibrated(true)
-        }
-        return next
-      })
-
-      latestSamplesRef.current = null
-      setFaceIndex((i) => i + 1)
-    },
-    [faceIndex, captureOrder],
-  )
-
-  /** Shared by both the auto-capture gate and the manual button: never
-   *  stores a duplicate center, surfacing the "show me a different side"
-   *  message instead. */
-  const attemptCapture = useCallback(
-    (samples: StickerSample[], colors: readonly Face[]) => {
-      const center = colors[4]
-      if (currentFace && isDuplicateCenter(center, existingCenters)) {
-        duplicateMessageRef.current = duplicateCenterMessage(center, currentFace)
-        setDuplicateMessage(duplicateMessageRef.current)
-        return
-      }
-      duplicateMessageRef.current = null
-      setDuplicateMessage(null)
-      finalizeFace(samples)
-    },
-    [currentFace, existingCenters, finalizeFace],
-  )
-
-  const captureNow = useCallback(() => {
-    const samples = latestSamplesRef.current
-    if (!samples) return
-    const now = Date.now()
-    const colors = samples.map((s) => classifySticker(s, centroids, calibrated).color)
-    gateStateRef.current = { phase: 'captured', at: now, colors }
-    setGateState(gateStateRef.current)
-    setGateStateAt(now)
-    attemptCapture(samples, colors)
-  }, [centroids, calibrated, attemptCapture])
+  const eligibility = useMemo(() => {
+    if (!pending || !currentFace) return null
+    const classified = classifyReading(pending)
+    return evaluateCapture(
+      { classifications: classified.map((c) => c.color), confidences: classified.map((c) => c.confidence) },
+      existingCenters,
+      currentFace,
+    )
+  }, [pending, currentFace, classifyReading, existingCenters])
 
   useEffect(() => {
-    if (!active || isComplete) return undefined
+    if (!active || mode !== 'live') return undefined
 
     hiddenCanvasRef.current ??= document.createElement('canvas')
     const canvas = hiddenCanvasRef.current
@@ -208,62 +233,118 @@ export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}
       const samples = sampleGrid(image)
       latestSamplesRef.current = samples
       const classified = samples.map((s) => classifySticker(s, centroids, calibrated))
-      setLiveStickers(classified.map((c) => ({ color: c.color, confidence: c.confidence })))
-
-      const colors = classified.map((c) => c.color)
-      const now = Date.now()
-      const result = tickGate(gateStateRef.current, colors, now)
-      gateStateRef.current = result.state
-      setGateState(result.state)
-      setGateStateAt(now)
-
-      if (result.state.phase === 'armed' && duplicateMessageRef.current !== null) {
-        // Classification moved on from the duplicate reading — drop the
-        // stale message while the fresh stability window builds.
-        duplicateMessageRef.current = null
-        setDuplicateMessage(null)
-      }
-
-      if (result.didCapture && result.state.phase === 'captured') {
-        attemptCapture(samples, result.state.colors)
-      }
+      setRawLiveStickers(classified.map((c) => ({ color: c.color, confidence: c.confidence })))
     }
 
     const interval = setInterval(tick, SAMPLE_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [active, isComplete, centroids, calibrated, attemptCapture])
+  }, [active, mode, centroids, calibrated])
+
+  const captureNow = useCallback(() => {
+    if (mode !== 'live' || !currentFace) return
+    const samples = latestSamplesRef.current
+    const canvas = hiddenCanvasRef.current
+    if (!samples || !canvas) return
+    setPending({
+      face: currentFace,
+      samples,
+      overrides: {},
+      imageDataUrl: canvas.toDataURL('image/jpeg', 0.85),
+    })
+  }, [mode, currentFace])
+
+  const confirmPending = useCallback(() => {
+    if (!pending || !eligibility?.canConfirm) return
+    const { face, ...reading } = pending
+    setStoredFaces((prev) => ({ ...prev, [face]: reading }))
+    setPending(null)
+    setCursorIndex((i) => Math.min(i + 1, captureOrder.length - 1))
+  }, [pending, eligibility, captureOrder.length])
+
+  const retake = useCallback(() => {
+    if (pending) {
+      setPending(null)
+      return
+    }
+    if (currentFace && storedFaces[currentFace]) {
+      setStoredFaces((prev) => {
+        const next = { ...prev }
+        delete next[currentFace]
+        return next
+      })
+    }
+  }, [pending, currentFace, storedFaces])
+
+  const setCellColor = useCallback(
+    (index: number, color: Face) => {
+      if (pending) {
+        setPending((prev) => (prev ? { ...prev, overrides: { ...prev.overrides, [index]: color } } : prev))
+        return
+      }
+      if (currentFace && storedFaces[currentFace]) {
+        setStoredFaces((prev) => {
+          const stored = prev[currentFace]
+          if (!stored) return prev
+          return {
+            ...prev,
+            [currentFace]: { ...stored, overrides: { ...stored.overrides, [index]: color } },
+          }
+        })
+      }
+    },
+    [pending, currentFace, storedFaces],
+  )
+
+  const goPrevious = useCallback(() => {
+    setPending(null)
+    setCursorIndex((i) => Math.max(0, i - 1))
+  }, [])
+
+  const goNext = useCallback(() => {
+    setPending(null)
+    setCursorIndex((i) => Math.min(captureOrder.length - 1, i + 1))
+  }, [captureOrder.length])
 
   const faces = useMemo(() => {
     const result: Partial<Record<Face, CapturedFace>> = {}
     for (const face of FACE_ORDER) {
-      const samples = stickerSamples[face]
-      if (!samples) continue
-      const classified = calibrated
-        ? reclassifyAll(samples, centroids)
-        : samples.map((s) => classifySticker(s, centroids, false))
-      result[face] = {
-        colors: classified.map((c) => c.color),
-        confidence: classified.map((c) => c.confidence),
-      }
+      const stored = storedFaces[face]
+      if (!stored) continue
+      const classified = classifyReading(stored)
+      result[face] = { colors: classified.map((c) => c.color), confidence: classified.map((c) => c.confidence) }
     }
     return result
-  }, [stickerSamples, centroids, calibrated])
+  }, [storedFaces, classifyReading])
 
   const attachVideo = useCallback((el: HTMLVideoElement | null) => {
     videoElRef.current = el
   }, [])
 
+  const frameImage = pending
+    ? pending.imageDataUrl
+    : currentFace && storedFaces[currentFace]
+      ? storedFaces[currentFace]!.imageDataUrl
+      : null
+
   return {
     attachVideo,
     currentFace,
+    mode,
     isComplete,
     faces,
     liveStickers,
+    frameImage,
+    grid,
+    eligibility,
     captureNow,
+    confirmPending,
+    retake,
+    setCellColor,
+    goPrevious,
+    goNext,
+    canGoPrevious: cursorIndex > 0,
+    canGoNext: cursorIndex < captureOrder.length - 1,
     centroids,
     calibrated,
-    gateState,
-    gateStateAt,
-    duplicateMessage,
   }
 }

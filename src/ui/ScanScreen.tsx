@@ -1,78 +1,76 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Face } from '../core/types'
 import { FACE_ORDER } from '../core/facelets'
 import type { ColorMatch, HSV } from '../scan/colorDetect'
 import { LOW_CONFIDENCE_THRESHOLD } from '../scan/colorDetect'
-import { describeGateState } from '../scan/captureGate'
-import { STICKER_COLORS } from '../render/colors'
+import { FACE_COLOR_NAMES, STICKER_COLORS } from '../render/colors'
 import { CROSS_LAYOUT } from './crossLayout'
 import { holdInstruction } from './scanInstructions'
 import { useCamera } from './useCamera'
-import { useFaceCapture } from './useFaceCapture'
+import { nextFaceColor, useFaceCapture } from './useFaceCapture'
 import type { CapturedFace } from './useFaceCapture'
 
-/** Square guide side length in CSS pixels (design-mocks.html screen 3). */
+/** Square viewfinder side length in CSS pixels (design-mocks.html screen 3). */
 const GUIDE_SIZE = 260
+/** Inset of the corner brackets / live-dots / tap-to-fix grid from the
+ *  viewport edge — shared so all three line up visually. */
+const TARGET_INSET = 36
+const BRACKET_ARM = 26
 
-function drawScanGuide(
-  ctx: CanvasRenderingContext2D,
-  size: number,
-  liveStickers: readonly ColorMatch[] | null,
-): void {
-  ctx.clearRect(0, 0, size, size)
+/** L-shaped corner brackets framing the target face — deliberately NOT a
+ *  grid over the live cube (PR-26: stickers stay fully visible so the user
+ *  can judge their own alignment; the app never overlays a false-precision
+ *  3x3 lattice on a cube it hasn't confirmed is even there). */
+function drawBrackets(ctx: CanvasRenderingContext2D, size: number): void {
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)'
+  ctx.lineWidth = 2.5
+  ctx.lineCap = 'round'
+  const a = TARGET_INSET
+  const b = size - TARGET_INSET
 
-  const inset = 12
-  const cell = (size - inset * 2) / 3
-
-  if (liveStickers) {
-    liveStickers.forEach((sticker, i) => {
-      const col = i % 3
-      const row = Math.floor(i / 3)
-      const x = inset + col * cell
-      const y = inset + row * cell
-
-      ctx.globalAlpha = 0.85
-      ctx.fillStyle = STICKER_COLORS[sticker.color]
-      ctx.beginPath()
-      ctx.roundRect(x + 2, y + 2, cell - 4, cell - 4, 4)
-      ctx.fill()
-      ctx.globalAlpha = 1
-
-      if (sticker.confidence < LOW_CONFIDENCE_THRESHOLD) {
-        ctx.save()
-        ctx.setLineDash([4, 3])
-        ctx.strokeStyle = '#ef9f27'
-        ctx.lineWidth = 2
-        ctx.strokeRect(x + 2, y + 2, cell - 4, cell - 4)
-        ctx.restore()
-      }
-    })
-  }
-
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)'
-  ctx.lineWidth = 1.5
-  ctx.beginPath()
-  ctx.roundRect(4, 4, size - 8, size - 8, 14)
-  ctx.stroke()
-
-  ctx.lineWidth = 1
-  for (let i = 1; i < 3; i++) {
-    const x = inset + cell * i
+  const corners: readonly [number, number, number, number][] = [
+    [a, a, 1, 1],
+    [b, a, -1, 1],
+    [a, b, 1, -1],
+    [b, b, -1, -1],
+  ]
+  for (const [x, y, dx, dy] of corners) {
     ctx.beginPath()
-    ctx.moveTo(x, inset)
-    ctx.lineTo(x, size - inset)
-    ctx.stroke()
-
-    const y = inset + cell * i
-    ctx.beginPath()
-    ctx.moveTo(inset, y)
-    ctx.lineTo(size - inset, y)
+    ctx.moveTo(x + BRACKET_ARM * dx, y)
+    ctx.lineTo(x, y)
+    ctx.lineTo(x, y + BRACKET_ARM * dy)
     ctx.stroke()
   }
 }
 
-/** Mini unfolded-cube progress indicator (PR-14): each face fills in with
- *  its captured colors as it lands; not-yet-captured faces stay blank. */
+/** Small per-cell dots showing the live classification, behind a
+ *  default-off toggle (PR-26) — a lighter-weight hint than a full grid. */
+function drawLiveDots(ctx: CanvasRenderingContext2D, size: number, stickers: readonly ColorMatch[]): void {
+  const cell = (size - TARGET_INSET * 2) / 3
+  stickers.forEach((sticker, i) => {
+    const col = i % 3
+    const row = Math.floor(i / 3)
+    const cx = TARGET_INSET + cell * (col + 0.5)
+    const cy = TARGET_INSET + cell * (row + 0.5)
+
+    ctx.beginPath()
+    ctx.arc(cx, cy, 5, 0, Math.PI * 2)
+    ctx.globalAlpha = sticker.confidence < LOW_CONFIDENCE_THRESHOLD ? 0.45 : 0.95
+    ctx.fillStyle = STICKER_COLORS[sticker.color]
+    ctx.fill()
+    ctx.globalAlpha = 1
+    ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'
+    ctx.stroke()
+  })
+}
+
+/** Mini unfolded-cube progress indicator: each face fills in with its
+ *  captured colors as it lands; not-yet-captured faces stay blank. Kept
+ *  from PR-14 rather than the spec's small 3D `CubeRenderer` widget — a
+ *  second live WebGL context for a corner widget is real cost on mobile,
+ *  and "unscanned face" has no representable value in the locked 54-char
+ *  facelet contract (D3) a `CubeRenderer.setState` could show. */
 function ScanProgressMini({ faces }: { faces: Partial<Record<Face, CapturedFace>> }) {
   return (
     <div className="scan-mini">
@@ -110,9 +108,8 @@ export interface ScanScreenProps {
   /** Fires once `captureOrder` finishes. */
   onScanComplete: (result: ScanCompleteResult) => void
   /** Faces this instance should still capture, in order. Defaults to the
-   *  full U,R,F,D,L,B sequence (PR-14). Pass the faces not yet done to
-   *  resume a scan interrupted by a refresh, or a single face for "Rescan
-   *  face X" (PR-15). */
+   *  full U,R,F,D,L,B sequence. Pass the faces not yet done to resume a
+   *  scan interrupted by a refresh, or a single face for "Rescan face X". */
   captureOrder?: readonly Face[]
   /** Faces already captured in a previous scan/instance — e.g. the other 5
    *  when resuming or rescanning. Merged into the progress mini-map and
@@ -125,12 +122,30 @@ export interface ScanScreenProps {
   seedCalibrated?: boolean
 }
 
-/** PR-14/15: guided scan flow on top of the PR-12 camera plumbing and PR-13
- *  color classification — fixed U,R,F,D,L,B capture order (or a resumed /
- *  single-face subset) with a hold instruction per face, a live per-sticker
- *  classification preview drawn on the guide overlay, auto-capture after
- *  ~1s of stable classification (or a manual capture button), and a mini
- *  unfolded-cube progress indicator. */
+function instructionFor(
+  mode: 'live' | 'pending' | 'captured',
+  face: Face,
+  duplicateMessage: string | null,
+  blockingCount: number,
+): string {
+  if (mode === 'pending') {
+    if (duplicateMessage) return duplicateMessage
+    if (blockingCount > 0) {
+      return blockingCount === 1
+        ? '1 sticker looks unsure — tap it to fix, or retake.'
+        : `${blockingCount} stickers look unsure — tap to fix, or retake.`
+    }
+    return 'Looks good — tap Confirm to lock it in.'
+  }
+  if (mode === 'captured') return 'Tap a sticker to fix it, or retake this face.'
+  return holdInstruction(face)
+}
+
+/** PR-26: tap-to-capture scan flow, on top of the PR-12 camera plumbing and
+ *  PR-13 color classification — fixed U,R,F,D,L,B capture order (or a
+ *  resumed/single-face subset), corner-bracket viewfinder, shutter-freeze +
+ *  Confirm/Retake with tap-to-fix, and Previous/Next navigation. Supersedes
+ *  PR-14's auto-capture flow (see tasks.md for why). */
 export function ScanScreen({
   onEnterColorsManually,
   onScanComplete,
@@ -143,22 +158,26 @@ export function ScanScreen({
   const {
     attachVideo,
     currentFace,
+    mode,
     isComplete,
     faces,
     liveStickers,
+    frameImage,
+    grid,
+    eligibility,
     captureNow,
+    confirmPending,
+    retake,
+    setCellColor,
+    goPrevious,
+    goNext,
+    canGoPrevious,
+    canGoNext,
     centroids,
     calibrated,
-    gateState,
-    gateStateAt,
-    duplicateMessage,
-  } = useFaceCapture(status === 'ready', {
-    captureOrder,
-    seedCentroids,
-    seedCalibrated,
-    priorFaces,
-  })
+  } = useFaceCapture(status === 'ready', { captureOrder, seedCentroids, seedCalibrated, priorFaces })
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [showLiveDots, setShowLiveDots] = useState(false)
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -170,8 +189,12 @@ export function ScanScreen({
     canvas.width = GUIDE_SIZE * dpr
     canvas.height = GUIDE_SIZE * dpr
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    drawScanGuide(ctx, GUIDE_SIZE, liveStickers)
-  }, [status, liveStickers])
+    ctx.clearRect(0, 0, GUIDE_SIZE, GUIDE_SIZE)
+    if (mode === 'live') {
+      drawBrackets(ctx, GUIDE_SIZE)
+      if (showLiveDots && liveStickers) drawLiveDots(ctx, GUIDE_SIZE, liveStickers)
+    }
+  }, [status, mode, liveStickers, showLiveDots])
 
   useEffect(() => {
     if (isComplete) onScanComplete({ faces, centroids, calibrated })
@@ -222,48 +245,133 @@ export function ScanScreen({
             <ScanProgressMini faces={allFaces} />
           </div>
         ) : (
-          <>
-            {currentFace && (
-              <p className={'scan-instruction' + (duplicateMessage ? ' is-notice' : '')}>
-                {duplicateMessage ?? holdInstruction(currentFace)}
+          currentFace && (
+            <>
+              <p className={'scan-instruction' + (eligibility?.duplicateMessage ? ' is-notice' : '')}>
+                {instructionFor(mode, currentFace, eligibility?.duplicateMessage ?? null, eligibility?.blockingCells.length ?? 0)}
               </p>
-            )}
-            <div
-              className={'scan-viewport' + (gateState.phase === 'captured' ? ' is-captured' : '')}
-              style={{ width: GUIDE_SIZE, height: GUIDE_SIZE }}
-            >
-              <video
-                ref={attachVideoAndCamera}
-                className={'scan-video' + (mirrored ? ' is-mirrored' : '')}
-                autoPlay
-                playsInline
-                muted
-              />
-              <canvas
-                ref={canvasRef}
-                className="scan-guide-canvas"
-                width={GUIDE_SIZE}
-                height={GUIDE_SIZE}
-              />
-              {status === 'starting' && <p className="scan-starting">Starting camera…</p>}
-              {import.meta.env.DEV && (
-                <p className="scan-dev-gate">{describeGateState(gateState, gateStateAt)}</p>
-              )}
-            </div>
-            <div className="scan-controls-row">
-              <ScanProgressMini faces={allFaces} />
-              <p className="scan-auto-hint">Auto-captures when steady</p>
-              <button
-                type="button"
-                className="scan-capture-btn"
-                aria-label="Capture this face now"
-                disabled={!liveStickers}
-                onClick={captureNow}
+              <div
+                className={'scan-viewport' + (mode !== 'live' ? ' is-frozen' : '')}
+                style={{ width: GUIDE_SIZE, height: GUIDE_SIZE }}
               >
-                <span />
-              </button>
-            </div>
-          </>
+                {mode === 'live' ? (
+                  <video
+                    ref={attachVideoAndCamera}
+                    className={'scan-video' + (mirrored ? ' is-mirrored' : '')}
+                    autoPlay
+                    playsInline
+                    muted
+                  />
+                ) : (
+                  frameImage && (
+                    <img
+                      src={frameImage}
+                      alt=""
+                      className={'scan-video' + (mirrored ? ' is-mirrored' : '')}
+                    />
+                  )
+                )}
+                <canvas
+                  ref={canvasRef}
+                  className="scan-guide-canvas"
+                  width={GUIDE_SIZE}
+                  height={GUIDE_SIZE}
+                />
+                {mode !== 'live' && grid && (
+                  <div className="scan-fix-grid">
+                    {grid.map((cell, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        className={
+                          'scan-fix-cell' + (eligibility?.blockingCells.includes(i) ? ' is-blocking' : '')
+                        }
+                        style={{ background: STICKER_COLORS[cell.color] }}
+                        aria-label={
+                          `Sticker ${i + 1}: ${FACE_COLOR_NAMES[cell.color]}` +
+                          (eligibility?.blockingCells.includes(i) ? ' (unsure — tap to fix)' : ' (tap to fix)')
+                        }
+                        onClick={() => setCellColor(i, nextFaceColor(cell.color))}
+                      />
+                    ))}
+                  </div>
+                )}
+                {status === 'starting' && <p className="scan-starting">Starting camera…</p>}
+                {mode === 'live' && (
+                  <button
+                    type="button"
+                    className={'scan-dots-toggle' + (showLiveDots ? ' is-on' : '')}
+                    aria-pressed={showLiveDots}
+                    onClick={() => setShowLiveDots((v) => !v)}
+                  >
+                    {showLiveDots ? 'Hide colors' : 'Show colors'}
+                  </button>
+                )}
+              </div>
+
+              <ScanProgressMini faces={allFaces} />
+
+              <div className="scan-controls-row">
+                {mode === 'live' && (
+                  <>
+                    <button
+                      type="button"
+                      className="scan-nav-btn"
+                      disabled={!canGoPrevious}
+                      onClick={goPrevious}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      className="scan-capture-btn"
+                      aria-label="Capture this face"
+                      disabled={!liveStickers}
+                      onClick={captureNow}
+                    >
+                      <span />
+                    </button>
+                    <button type="button" className="scan-nav-btn" disabled={!canGoNext} onClick={goNext}>
+                      Next
+                    </button>
+                  </>
+                )}
+                {mode === 'pending' && (
+                  <>
+                    <button type="button" className="btn-secondary" onClick={retake}>
+                      Retake
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={!eligibility?.canConfirm}
+                      onClick={confirmPending}
+                    >
+                      Confirm
+                    </button>
+                  </>
+                )}
+                {mode === 'captured' && (
+                  <>
+                    <button
+                      type="button"
+                      className="scan-nav-btn"
+                      disabled={!canGoPrevious}
+                      onClick={goPrevious}
+                    >
+                      Previous
+                    </button>
+                    <button type="button" className="btn-secondary" onClick={retake}>
+                      Retake this face
+                    </button>
+                    <button type="button" className="scan-nav-btn" disabled={!canGoNext} onClick={goNext}>
+                      Next
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          )
         )}
       </div>
     </main>
