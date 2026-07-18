@@ -3,7 +3,7 @@ import type { Face } from '../core/types'
 import { FACE_ORDER } from '../core/facelets'
 import type { ColorMatch, HSV, StickerSample } from '../scan/colorDetect'
 import { DEFAULT_CENTROIDS, classifySticker, sampleGrid } from '../scan/colorDetect'
-import { calibrateFromCenters, isFullyCalibrated, reclassifyAll } from '../scan/calibrate'
+import { calibrateFromCenters, isFullyCalibrated } from '../scan/calibrate'
 import type { CaptureEligibility } from '../scan/captureEligibility'
 import { evaluateCapture } from '../scan/captureEligibility'
 import { CAPTURE_ORDER } from './scanInstructions'
@@ -113,6 +113,42 @@ export function nextFaceColor(color: Face): Face {
 }
 
 /**
+ * Draws the current video frame's centered-square crop onto `canvas` at
+ * `SAMPLE_SIZE` and returns the resulting `ImageData` — the single frame
+ * source for both the live-dots preview and the shutter capture. Bug fix:
+ * previously the shutter read a `samples` ref last written by the ~200ms
+ * background polling tick, so a tap could freeze a frame up to one tick
+ * stale relative to what the live preview last showed. Calling this
+ * function directly at tap time instead makes the capture synchronous with
+ * the tap — same draw call, same canvas, same moment, no polling lag.
+ */
+function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): ImageData | null {
+  if (video.readyState < 2 || !video.videoWidth) return null
+  const { sx, sy, side } = computeCoverCrop(video.videoWidth, video.videoHeight)
+  canvas.width = SAMPLE_SIZE
+  canvas.height = SAMPLE_SIZE
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.drawImage(video, sx, sy, side, side, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE)
+  return ctx.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE)
+}
+
+/** The one classification path — used for the live-dots preview, the
+ *  freeze-frame grid, and every reclassification (e.g. after
+ *  recalibration). Previously the freeze-frame path used `calibrate.ts`'s
+ *  `reclassifyAll` once calibrated, which skips `classifySticker`'s glare
+ *  penalty — a second, subtly different pipeline from the live preview's
+ *  `classifySticker` calls. Routing everything through this one function
+ *  makes that kind of drift impossible instead of just unlikely. */
+export function classifyFrame(
+  samples: readonly StickerSample[],
+  centroids: Readonly<Record<Face, HSV>>,
+  calibrated: boolean,
+): ColorMatch[] {
+  return samples.map((s) => classifySticker(s, centroids, calibrated))
+}
+
+/**
  * PR-26: drives the tap-to-capture scan flow — the full 6-face sequence, or
  * (per `options.captureOrder`) a single-face rescan. The app never decides
  * on its own that a cube is present and steady (that guesswork is what
@@ -131,8 +167,6 @@ export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}
 
   const videoElRef = useRef<HTMLVideoElement | null>(null)
   const hiddenCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const latestSamplesRef = useRef<StickerSample[] | null>(null)
-
   const [cursorIndex, setCursorIndex] = useState(0)
   const [storedFaces, setStoredFaces] = useState<Partial<Record<Face, StoredReading>>>({})
   const [pending, setPending] = useState<PendingReading | null>(null)
@@ -166,12 +200,12 @@ export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}
   }, [storedFaces, options.seedCentroids, options.seedCalibrated])
 
   /** Classifies a stored/pending reading's 9 samples against the current
-   *  centroids, with manual overrides (always confidence 1) applied on top. */
+   *  centroids, with manual overrides (always confidence 1) applied on top.
+   *  Always routes through `classifyFrame` — see its doc comment for why
+   *  that matters. */
   const classifyReading = useCallback(
     (reading: StoredReading): ColorMatch[] => {
-      const classified = calibrated
-        ? reclassifyAll(reading.samples, centroids)
-        : reading.samples.map((s) => classifySticker(s, centroids, false))
+      const classified = classifyFrame(reading.samples, centroids, calibrated)
       return classified.map((c, i) => {
         const override = reading.overrides[i]
         return override !== undefined ? { color: override, confidence: 1 } : c
@@ -220,20 +254,13 @@ export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}
 
     const tick = () => {
       const video = videoElRef.current
-      if (!video || video.readyState < 2 || !video.videoWidth) return
-
-      const { sx, sy, side } = computeCoverCrop(video.videoWidth, video.videoHeight)
-      canvas.width = SAMPLE_SIZE
-      canvas.height = SAMPLE_SIZE
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.drawImage(video, sx, sy, side, side, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE)
-      const image = ctx.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE)
+      if (!video) return
+      const image = drawVideoFrame(video, canvas)
+      if (!image) return
 
       const samples = sampleGrid(image)
-      latestSamplesRef.current = samples
-      const classified = samples.map((s) => classifySticker(s, centroids, calibrated))
-      setRawLiveStickers(classified.map((c) => ({ color: c.color, confidence: c.confidence })))
+      const classified = classifyFrame(samples, centroids, calibrated)
+      setRawLiveStickers(classified)
     }
 
     const interval = setInterval(tick, SAMPLE_INTERVAL_MS)
@@ -242,16 +269,33 @@ export function useFaceCapture(active: boolean, options: FaceCaptureOptions = {}
 
   const captureNow = useCallback(() => {
     if (mode !== 'live' || !currentFace) return
-    const samples = latestSamplesRef.current
+    const video = videoElRef.current
+    hiddenCanvasRef.current ??= document.createElement('canvas')
     const canvas = hiddenCanvasRef.current
-    if (!samples || !canvas) return
-    setPending({
-      face: currentFace,
-      samples,
-      overrides: {},
-      imageDataUrl: canvas.toDataURL('image/jpeg', 0.85),
-    })
-  }, [mode, currentFace])
+    if (!video) return
+    // Draw + sample synchronously, right now, on the same canvas the
+    // toDataURL snapshot below reads from — see `drawVideoFrame`'s doc
+    // comment. This is what makes the frozen frame match what the live
+    // preview was just showing: no dependency on the last ~200ms tick.
+    const image = drawVideoFrame(video, canvas)
+    if (!image) return
+    const samples = sampleGrid(image)
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85)
+
+    if (import.meta.env.DEV) {
+      const fresh = classifyFrame(samples, centroids, calibrated)
+      const describe = (c: ColorMatch) => `${c.color}:${c.confidence.toFixed(2)}`
+      console.log(
+        `[scan] capture ${currentFace} — live vs frozen classification:`,
+        '\n  live   ',
+        rawLiveStickers?.map(describe).join(' ') ?? '(no live sample yet)',
+        '\n  frozen ',
+        fresh.map(describe).join(' '),
+      )
+    }
+
+    setPending({ face: currentFace, samples, overrides: {}, imageDataUrl })
+  }, [mode, currentFace, centroids, calibrated, rawLiveStickers])
 
   const confirmPending = useCallback(() => {
     if (!pending || !eligibility?.canConfirm) return
