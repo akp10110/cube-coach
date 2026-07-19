@@ -4,23 +4,22 @@ import { FACE_ORDER } from '../core/facelets'
 import type { ColorMatch, HSV } from '../scan/colorDetect'
 import { LOW_CONFIDENCE_THRESHOLD } from '../scan/colorDetect'
 import { FACE_COLOR_NAMES, STICKER_COLORS } from '../render/colors'
-import { CROSS_LAYOUT } from './crossLayout'
 import { holdInstruction } from './scanInstructions'
 import { useCamera } from './useCamera'
 import { useFaceCapture } from './useFaceCapture'
-import type { CapturedFace } from './useFaceCapture'
+import type { CapturedFace, CaptureMode } from './useFaceCapture'
+import { useScanCubePreview } from './useScanCubePreview'
 
 /** Square viewfinder side length in CSS pixels (design-mocks.html screen 3). */
 const GUIDE_SIZE = 260
-/** Inset of the corner brackets / live-dots / tap-to-fix grid from the
- *  viewport edge — shared so all three line up visually. */
+/** Inset of the corner brackets / live-dots grid from the viewport edge. */
 const TARGET_INSET = 36
 const BRACKET_ARM = 26
 
 /** L-shaped corner brackets framing the target face — deliberately NOT a
  *  grid over the live cube (PR-26: stickers stay fully visible so the user
- *  can judge their own alignment; the app never overlays a false-precision
- *  3x3 lattice on a cube it hasn't confirmed is even there). */
+ *  can judge their own alignment). The camera feed is always live — there's
+ *  no freeze-frame step — so these are drawn continuously. */
 function drawBrackets(ctx: CanvasRenderingContext2D, size: number): void {
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)'
   ctx.lineWidth = 2.5
@@ -65,37 +64,6 @@ function drawLiveDots(ctx: CanvasRenderingContext2D, size: number, stickers: rea
   })
 }
 
-/** Mini unfolded-cube progress indicator: each face fills in with its
- *  captured colors as it lands; not-yet-captured faces stay blank. Kept
- *  from PR-14 rather than the spec's small 3D `CubeRenderer` widget — a
- *  second live WebGL context for a corner widget is real cost on mobile,
- *  and "unscanned face" has no representable value in the locked 54-char
- *  facelet contract (D3) a `CubeRenderer.setState` could show. */
-function ScanProgressMini({ faces }: { faces: Partial<Record<Face, CapturedFace>> }) {
-  return (
-    <div className="scan-mini">
-      {FACE_ORDER.map((face) => {
-        const captured = faces[face]
-        return (
-          <div
-            key={face}
-            className="scan-mini-face"
-            style={{ gridColumn: CROSS_LAYOUT[face].column, gridRow: CROSS_LAYOUT[face].row }}
-          >
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div
-                key={i}
-                className={'scan-mini-sticker' + (captured ? '' : ' is-empty')}
-                style={captured ? { background: STICKER_COLORS[captured.colors[i]] } : undefined}
-              />
-            ))}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 export interface ScanCompleteResult {
   faces: Partial<Record<Face, CapturedFace>>
   centroids: Readonly<Record<Face, HSV>>
@@ -112,9 +80,9 @@ export interface ScanScreenProps {
    *  scan interrupted by a refresh, or a single face for "Rescan face X". */
   captureOrder?: readonly Face[]
   /** Faces already captured in a previous scan/instance — e.g. the other 5
-   *  when resuming or rescanning. Merged into the progress mini-map and
-   *  "Face X of 6" count; this instance still only classifies and reports
-   *  the faces in `captureOrder`. */
+   *  when resuming or rescanning. Merged into the 3D preview and "Face X of
+   *  6" count; this instance still only classifies and reports the faces in
+   *  `captureOrder`. */
   priorFaces?: Partial<Record<Face, CapturedFace>>
   /** Seed centroids so a resume/rescan benefits from a prior calibration
    *  instead of restarting from `DEFAULT_CENTROIDS`. */
@@ -122,30 +90,22 @@ export interface ScanScreenProps {
   seedCalibrated?: boolean
 }
 
-function instructionFor(
-  mode: 'live' | 'pending' | 'captured',
-  face: Face,
-  duplicateMessage: string | null,
-  blockingCount: number,
-): string {
-  if (mode === 'pending') {
-    if (duplicateMessage) return duplicateMessage
-    if (blockingCount > 0) {
-      return blockingCount === 1
-        ? '1 sticker looks unsure — tap it to fix, or retake.'
-        : `${blockingCount} stickers look unsure — tap to fix, or retake.`
-    }
-    return 'Looks good — tap any sticker to fix it, or Confirm.'
-  }
-  if (mode === 'captured') return 'Tap any sticker to fix it, or retake this face.'
-  return holdInstruction(face)
+function instructionFor(mode: CaptureMode, face: Face, duplicateMessage: string | null): string {
+  if (mode === 'live') return duplicateMessage ?? holdInstruction(face)
+  return 'Tap any sticker on the cube to fix it, or retake this face.'
 }
 
-/** PR-26: tap-to-capture scan flow, on top of the PR-12 camera plumbing and
- *  PR-13 color classification — fixed U,R,F,D,L,B capture order (or a
- *  resumed/single-face subset), corner-bracket viewfinder, shutter-freeze +
- *  Confirm/Retake with tap-to-fix, and Previous/Next navigation. Supersedes
- *  PR-14's auto-capture flow (see tasks.md for why). */
+/**
+ * Tap-to-capture scan flow with a live 3D cube standing in for the old
+ * freeze-frame confirm step: a live camera feed on top, and directly below
+ * it a `CubeRenderer` (PR-06) whose current face fills in live with the
+ * detected colors as the user points at their cube. Tap Capture to lock
+ * that face onto the model, Previous/Next to move between faces. Any
+ * already-captured sticker on the 3D model is tappable to open a 6-color
+ * picker and fix it by hand — the classifier's read is a suggestion, the
+ * user is ground truth. Fixed U,R,F,D,L,B capture order (or a
+ * resumed/single-face subset).
+ */
 export function ScanScreen({
   onEnterColorsManually,
   onScanComplete,
@@ -162,12 +122,9 @@ export function ScanScreen({
     isComplete,
     faces,
     liveStickers,
-    frameImage,
-    grid,
-    gridDebug,
-    eligibility,
+    liveDebug,
+    duplicateMessage,
     captureNow,
-    confirmPending,
     retake,
     setCellColor,
     goPrevious,
@@ -179,18 +136,20 @@ export function ScanScreen({
   } = useFaceCapture(status === 'ready', { captureOrder, seedCentroids, seedCalibrated, priorFaces })
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [showLiveDots, setShowLiveDots] = useState(false)
-  /** Which cell's color picker is open — any cell, not just low-confidence
-   *  ones (PR-26 follow-up: the classifier's read is a suggestion, the user
-   *  is ground truth). Tagged with the mode/face it was opened on so a
-   *  stale picker from a face just left behind (Confirm, Retake, Previous/
-   *  Next) reads as closed without needing an effect to clear it. */
-  const [rawEditing, setRawEditing] = useState<{ mode: string; face: Face | null; index: number } | null>(
-    null,
-  )
-  const editingIndex =
-    rawEditing && rawEditing.mode === mode && rawEditing.face === currentFace ? rawEditing.index : null
-  const setEditingIndex = (index: number | null) =>
-    setRawEditing(index === null ? null : { mode, face: currentFace, index })
+  const [editingTarget, setEditingTarget] = useState<{ face: Face; index: number } | null>(null)
+
+  const allFaces = { ...priorFaces, ...faces }
+
+  const { attachCanvas: attachCubeCanvas } = useScanCubePreview({
+    currentFace,
+    isLive: mode === 'live',
+    liveStickers,
+    faces: allFaces,
+    onStickerTap: (face, index) => {
+      if (!allFaces[face]) return
+      setEditingTarget((prev) => (prev?.face === face && prev.index === index ? null : { face, index }))
+    },
+  })
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -203,11 +162,9 @@ export function ScanScreen({
     canvas.height = GUIDE_SIZE * dpr
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, GUIDE_SIZE, GUIDE_SIZE)
-    if (mode === 'live') {
-      drawBrackets(ctx, GUIDE_SIZE)
-      if (showLiveDots && liveStickers) drawLiveDots(ctx, GUIDE_SIZE, liveStickers)
-    }
-  }, [status, mode, liveStickers, showLiveDots])
+    drawBrackets(ctx, GUIDE_SIZE)
+    if (showLiveDots && liveStickers) drawLiveDots(ctx, GUIDE_SIZE, liveStickers)
+  }, [status, liveStickers, showLiveDots])
 
   useEffect(() => {
     if (isComplete) onScanComplete({ faces, centroids, calibrated })
@@ -221,9 +178,26 @@ export function ScanScreen({
     attachVideo(el)
   }
 
-  const allFaces = { ...priorFaces, ...faces }
+  const handlePrevious = () => {
+    setEditingTarget(null)
+    goPrevious()
+  }
+  const handleNext = () => {
+    setEditingTarget(null)
+    goNext()
+  }
+  const handleCapture = () => {
+    setEditingTarget(null)
+    captureNow()
+  }
+  const handleRetake = () => {
+    setEditingTarget(null)
+    retake()
+  }
+
   const facesDone = FACE_ORDER.filter((face) => allFaces[face]).length
   const progressPill = isComplete ? 'All 6 faces scanned' : `Face ${facesDone + 1} of 6`
+  const editingColor = editingTarget ? allFaces[editingTarget.face]?.colors[editingTarget.index] : null
 
   return (
     <main className="app-shell scan-shell">
@@ -255,166 +229,97 @@ export function ScanScreen({
         ) : isComplete ? (
           <div className="scan-complete">
             <p className="scan-complete-title">All 6 faces scanned!</p>
-            <ScanProgressMini faces={allFaces} />
           </div>
         ) : (
           currentFace && (
             <>
-              <p className={'scan-instruction' + (eligibility?.duplicateMessage ? ' is-notice' : '')}>
-                {instructionFor(mode, currentFace, eligibility?.duplicateMessage ?? null, eligibility?.blockingCells.length ?? 0)}
+              <p className={'scan-instruction' + (duplicateMessage ? ' is-notice' : '')}>
+                {instructionFor(mode, currentFace, duplicateMessage)}
               </p>
-              <div
-                className={'scan-viewport' + (mode !== 'live' ? ' is-frozen' : '')}
-                style={{ width: GUIDE_SIZE, height: GUIDE_SIZE }}
-              >
-                {mode === 'live' ? (
-                  <video
-                    ref={attachVideoAndCamera}
-                    className={'scan-video' + (mirrored ? ' is-mirrored' : '')}
-                    autoPlay
-                    playsInline
-                    muted
-                  />
-                ) : (
-                  frameImage && (
-                    <img
-                      src={frameImage}
-                      alt=""
-                      className={'scan-video' + (mirrored ? ' is-mirrored' : '')}
-                    />
-                  )
-                )}
+              <div className="scan-viewport" style={{ width: GUIDE_SIZE, height: GUIDE_SIZE }}>
+                <video
+                  ref={attachVideoAndCamera}
+                  className={'scan-video' + (mirrored ? ' is-mirrored' : '')}
+                  autoPlay
+                  playsInline
+                  muted
+                />
                 <canvas
                   ref={canvasRef}
                   className="scan-guide-canvas"
                   width={GUIDE_SIZE}
                   height={GUIDE_SIZE}
                 />
-                {mode !== 'live' && grid && (
-                  <div className="scan-fix-grid">
-                    {grid.map((cell, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        className={
-                          'scan-fix-cell' +
-                          (eligibility?.blockingCells.includes(i) ? ' is-blocking' : '') +
-                          (editingIndex === i ? ' is-editing' : '')
-                        }
-                        style={{ background: STICKER_COLORS[cell.color] }}
-                        aria-label={
-                          `Sticker ${i + 1}: ${FACE_COLOR_NAMES[cell.color]}` +
-                          (eligibility?.blockingCells.includes(i) ? ' (unsure — tap to fix)' : ' (tap to fix)')
-                        }
-                        aria-expanded={editingIndex === i}
-                        onClick={() => setEditingIndex(editingIndex === i ? null : i)}
-                      />
-                    ))}
-                  </div>
-                )}
                 {status === 'starting' && <p className="scan-starting">Starting camera…</p>}
-                {mode === 'live' && (
-                  <button
-                    type="button"
-                    className={'scan-dots-toggle' + (showLiveDots ? ' is-on' : '')}
-                    aria-pressed={showLiveDots}
-                    onClick={() => setShowLiveDots((v) => !v)}
-                  >
-                    {showLiveDots ? 'Hide colors' : 'Show colors'}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className={'scan-dots-toggle' + (showLiveDots ? ' is-on' : '')}
+                  aria-pressed={showLiveDots}
+                  onClick={() => setShowLiveDots((v) => !v)}
+                >
+                  {showLiveDots ? 'Hide colors' : 'Show colors'}
+                </button>
               </div>
 
-              {editingIndex !== null && grid && (
+              <div className="scan-cube-stage">
+                <canvas ref={attachCubeCanvas} className="scan-cube-canvas" />
+              </div>
+
+              {editingTarget && (
                 <div
                   className="palette"
                   role="group"
-                  aria-label={`Pick a color for sticker ${editingIndex + 1}`}
+                  aria-label={`Pick a color for ${FACE_COLOR_NAMES[editingTarget.face]} face, sticker ${editingTarget.index + 1}`}
                 >
                   {FACE_ORDER.map((face) => (
                     <button
                       key={face}
                       type="button"
-                      className={
-                        'palette-swatch' + (grid[editingIndex].color === face ? ' is-selected' : '')
-                      }
+                      className={'palette-swatch' + (editingColor === face ? ' is-selected' : '')}
                       style={{ background: STICKER_COLORS[face] }}
                       aria-label={FACE_COLOR_NAMES[face]}
-                      aria-pressed={grid[editingIndex].color === face}
+                      aria-pressed={editingColor === face}
                       onClick={() => {
-                        setCellColor(editingIndex, face)
-                        setEditingIndex(null)
+                        setCellColor(editingTarget.face, editingTarget.index, face)
+                        setEditingTarget(null)
                       }}
                     />
                   ))}
                 </div>
               )}
 
-              <ScanProgressMini faces={allFaces} />
-
               <div className="scan-controls-row">
-                {mode === 'live' && (
-                  <>
-                    <button
-                      type="button"
-                      className="scan-nav-btn"
-                      disabled={!canGoPrevious}
-                      onClick={goPrevious}
-                    >
-                      Previous
-                    </button>
-                    <button
-                      type="button"
-                      className="scan-capture-btn"
-                      aria-label="Capture this face"
-                      disabled={!liveStickers}
-                      onClick={captureNow}
-                    >
-                      <span />
-                    </button>
-                    <button type="button" className="scan-nav-btn" disabled={!canGoNext} onClick={goNext}>
-                      Next
-                    </button>
-                  </>
+                <button
+                  type="button"
+                  className="scan-nav-btn"
+                  disabled={!canGoPrevious}
+                  onClick={handlePrevious}
+                >
+                  Previous
+                </button>
+                {mode === 'live' ? (
+                  <button
+                    type="button"
+                    className="scan-capture-btn"
+                    aria-label="Capture this face"
+                    disabled={!liveStickers || !!duplicateMessage}
+                    onClick={handleCapture}
+                  >
+                    <span />
+                  </button>
+                ) : (
+                  <button type="button" className="btn-secondary" onClick={handleRetake}>
+                    Retake
+                  </button>
                 )}
-                {mode === 'pending' && (
-                  <>
-                    <button type="button" className="btn-secondary" onClick={retake}>
-                      Retake
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      disabled={!eligibility?.canConfirm}
-                      onClick={confirmPending}
-                    >
-                      Confirm
-                    </button>
-                  </>
-                )}
-                {mode === 'captured' && (
-                  <>
-                    <button
-                      type="button"
-                      className="scan-nav-btn"
-                      disabled={!canGoPrevious}
-                      onClick={goPrevious}
-                    >
-                      Previous
-                    </button>
-                    <button type="button" className="btn-secondary" onClick={retake}>
-                      Retake this face
-                    </button>
-                    <button type="button" className="scan-nav-btn" disabled={!canGoNext} onClick={goNext}>
-                      Next
-                    </button>
-                  </>
-                )}
+                <button type="button" className="scan-nav-btn" disabled={!canGoNext} onClick={handleNext}>
+                  Next
+                </button>
               </div>
 
-              {import.meta.env.DEV && mode !== 'live' && gridDebug && (
+              {import.meta.env.DEV && liveDebug && (
                 <div className="scan-dev-overlay" aria-hidden="true">
-                  {gridDebug.map((d, i) => (
+                  {liveDebug.map((d, i) => (
                     <div key={i}>
                       [{i}] h{d.hsv.h.toFixed(0)}° s{d.hsv.s.toFixed(2)} v{d.hsv.v.toFixed(2)} →{' '}
                       {d.bestFace}(Δ{d.bestDistance.toFixed(2)}) next {d.runnerUpFace}(Δ
