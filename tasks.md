@@ -309,6 +309,26 @@ export function isSolved(s: FaceletString): boolean;
 - **Depends:** PR-14, PR-10.
 
 > ### ✅ CHECKPOINT 2 (delivery manager, real cube in hand)
+> **Status: NOT YET RUN on a real device.** PR-26 shipped, plus two follow-up
+> fixes it surfaced the need for once code review dug into the freeze-frame
+> path (no physical cube involved in finding either — both were caught by
+> tracing the capture pipeline and empirical probing, then locked in with
+> regression tests):
+> - `fix/freeze-frame-capture-mismatch` (#21): the shutter froze a
+>   `~200ms`-stale sample from the background polling tick instead of the
+>   frame at the actual moment of the tap, so the freeze-frame could show
+>   different classifications than the live preview just showed. Capture is
+>   now synchronous with the tap, and the freeze-frame/live-preview
+>   classification path was unified into one function (it wasn't before).
+> - `fix/red-orange-and-manual-edit` (#22): confirmed center-anchored
+>   calibration was already correctly wired (no bug found there); widened
+>   the sample patch and added fixture tests against warm-light-shifted
+>   red/orange RGB values. Also: tapping *any* sticker on the freeze-frame
+>   (not just dashed ones) now opens a 6-color picker instead of cycling —
+>   see the updated PR-26 deviation note below.
+>
+> All of the below still needs a real phone + real cube pass — nothing here
+> has been physically verified yet:
 > 1. Scan your actual cube on your phone in normal room lighting — tap-to-capture each face, confirm on the freeze-frame, end to end into a correct solve.
 > 2. Point the camera at a wall/your face with NO cube — nothing captures (tap still requires a real, confident read; low-confidence cells block Confirm).
 > 3. Deliberately mis-read one sticker — fix it by tapping on the freeze-frame; validation catches impossible states with a readable message.
@@ -365,7 +385,7 @@ export function isSolved(s: FaceletString): boolean;
 - **Deviations from spec (documented per section 5):**
   - **Progress widget:** kept the existing 2D mini unfolded-cube cross (from PR-14) instead of a small 3D `CubeRenderer` widget. Reasons: (1) a second live WebGL context for a corner widget is real GPU/battery cost on the phones this flow targets; (2) "unscanned face" has no representable value in the locked 54-char facelet contract (D3) that `CubeRenderer.setState` accepts, so an unscanned face would have to render as some arbitrary/misleading color rather than cleanly blank, which the 2D version already does correctly. Flagging for the delivery manager rather than silently doing something else.
   - **Responsive phone/laptop split:** not implemented — kept the existing single fixed-width (`max-width: 380px`) layout from PR-12/14. A wide-viewport "viewfinder + progress cube beside it" laptop layout was left out of scope to keep this PR's diff reviewable; worth a follow-up if desktop usage turns out to matter.
-  - **Reused PR-10 editor** in spirit (same `STICKER_COLORS`/tap-to-set-color interaction model and CSS approach) rather than importing `EditScreen` itself — the freeze-frame is a single-face 3×3 grid mid-scan, not the 6-face unfolded cross `EditScreen` renders, so sharing the component directly would have meant threading a single-face mode through it. Tap cycles through the 6 colors (one of the two interaction options PR-10's own spec allowed) rather than a separate palette row, to keep the freeze-frame compact.
+  - **Reused PR-10 editor** in spirit (same `STICKER_COLORS`/`.palette`/`.palette-swatch` CSS and interaction pattern) rather than importing `EditScreen` itself — the freeze-frame is a single-face 3×3 grid mid-scan, not the 6-face unfolded cross `EditScreen` renders, so sharing the component directly would have meant threading a single-face mode through it. Originally shipped as tap-to-cycle through the 6 colors to keep the freeze-frame compact; **changed in the `fix/red-orange-and-manual-edit` follow-up (#22)** to tap-opens-a-picker (a `.palette` row of all 6 swatches, reusing EditScreen's exact pattern) — cycling made it easy to read "still cycling past the right answer" as "no fix available," and made it unclear that stickers with no flag were still correctable. Every cell (not just dashed ones) opens the picker now.
 - **Why:** the shipped auto-capture flow (PR-14) repeatedly misfired — arm/confidence deadlock, over-firing all six faces from one, and capturing a plain background (face/wall/plant) as a valid white face. Root cause: the app tried to decide on its own whether a cube was present and steady. This PR removes that guesswork.
 - **Design principle:** the app never guesses whether a cube is present or steady — the user confirms every capture with a tap. **DELETE** the auto-capture state machine (ARMED/STABLE/COOLDOWN), presence/lattice detection, and the "stable for ~1s" auto-fire — do not port them. **KEEP** the PR-13 color classifier and the duplicate-center guard (both work).
 - **Viewfinder:** L-shaped **corner brackets** framing the target face (NOT a grid over the cube — stickers stay fully visible). Brackets double as alignment/distance guide. Center label names the face to show ("Show the side with the RED center").
