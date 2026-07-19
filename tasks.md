@@ -327,11 +327,18 @@ export function isSolved(s: FaceletString): boolean;
 >   (not just dashed ones) now opens a 6-color picker instead of cycling —
 >   see the updated PR-26 deviation note below.
 >
+> - `feat/scan-live-3d-cube` (PR-27): replaced the freeze-frame Confirm/Retake
+>   step (tested above) with a live 3D cube — see PR-27's entry in Phase 9.
+>   Capture no longer freezes the video or blocks on low confidence; only the
+>   duplicate-center guard blocks it now. Re-verify items 1-3 below against
+>   this flow, not the freeze-frame one.
+>
 > All of the below still needs a real phone + real cube pass — nothing here
-> has been physically verified yet:
-> 1. Scan your actual cube on your phone in normal room lighting — tap-to-capture each face, confirm on the freeze-frame, end to end into a correct solve.
-> 2. Point the camera at a wall/your face with NO cube — nothing captures (tap still requires a real, confident read; low-confidence cells block Confirm).
-> 3. Deliberately mis-read one sticker — fix it by tapping on the freeze-frame; validation catches impossible states with a readable message.
+> has been physically verified yet (PR-27 only got a headless-Chromium
+> fake-camera smoke run, see its entry):
+> 1. Scan your actual cube on your phone in normal room lighting — tap-to-capture each face onto the live 3D cube, end to end into a correct solve.
+> 2. Point the camera at a wall/your face with NO cube — nothing captures without a tap; a duplicate/implausible read still gets caught by the duplicate-center guard and final `validate()`, not by refusing the tap.
+> 3. Deliberately mis-read one sticker — fix it by tapping that sticker directly on the 3D model; validation catches impossible states with a readable message.
 > 4. Deny camera permission — manual entry path works fully.
 > 5. Try the live-dots toggle both ways on your phone; tell the architect which felt better so we can set the default.
 > Expect to iterate on PR-13 color thresholds here. File follow-up issues rather than expanding scope.
@@ -400,6 +407,18 @@ export function isSolved(s: FaceletString): boolean;
 - **Tests (mandatory):** capture-eligibility is a pure function `{classifications, confidences} → { canConfirm: boolean; blockingCells: number[] }` — unit-test: any low-confidence cell ⇒ canConfirm false; all confident ⇒ true; duplicate center ⇒ blocked with message. Do not change types.ts.
 - **After merge:** re-run CHECKPOINT 2 (now including: camera on a wall/face with no cube captures nothing).
 - **Depends:** PR-13, PR-10, PR-06.
+
+#### ☑ PR-27 `[O]` Scan flow live 3D cube redesign (SUPERSEDES PR-26's freeze-frame confirm)
+- **Why:** replaces the shutter→freeze→Confirm/Retake step with a live `CubeRenderer` (PR-06) below the viewfinder — the model's current face fills in live with detected colors as the user points at their cube, so they compare the model against the real cube at a glance instead of reviewing a still. The camera feed itself is now always live; there is no frozen frame at any point.
+- **Flow:** point at face → 3D cube's current face updates live → tap **Capture** to lock that face onto the model (no auto-advance) → **Next**. Controls are always **Previous / Capture / Next** in live mode; a captured face shows **Previous / Retake / Next** instead (tap-to-fix covers per-sticker correction, so Retake is for "reshoot the whole face").
+- **Manual fix on the 3D cube:** tapping any sticker on an already-captured face of the model opens the PR-10-pattern 6-color palette and sets that sticker's color, via `CubeRenderer.pickSticker`/`onStickerTap` (new: screen-point raycast + tap-vs-drag detection) — any captured sticker is editable at any time, not just the current face's.
+- **Colors:** the model paints the LOCKED `STICKER_COLORS` palette (`CubeRenderer.paintSticker`/`paintFace`, new: direct per-sticker color, bypassing `setState`'s facelet string, since D3's `Face` alphabet has no "not yet scanned" value for the other 5 faces mid-scan), never raw sample RGB.
+- **Deviations from spec (documented per section 5):**
+  - **Superseded PR-26's own progress-widget deviation note**: PR-26 deliberately kept a 2D mini cross instead of a 3D progress cube (GPU cost + no "unscanned" facelet value). This PR reintroduces exactly that 3D widget, at full size in the main flow rather than a corner — the "unscanned face" problem is solved by painting directly (`paintSticker`), not through `setState`. The 2D mini-map is removed as redundant now that the full 3D cube shows the same progress.
+  - **Capture no longer blocked by low confidence** — only the duplicate-center guard blocks Capture now; a low-confidence sticker is marked with an amber outline on the model (`CubeRenderer.setStickerFlag`) and left to manual tap-to-fix. `captureEligibility.ts`'s `canConfirm`/`blockingCells` are still computed (tests unchanged) but no longer gate the shutter — only its `duplicateMessage` does.
+  - **PR-size guidance:** this PR's diff is ~480/-475 lines, over the <400-line target — flagged rather than split, since it's a single atomic UI replacement (freeze-frame → live cube) that has no clean midpoint to land separately without leaving the scan flow broken.
+- **Verified:** headless-Chromium smoke run (fake camera device) through capture → orbit-to-face → low-confidence flag → duplicate-guard block → tap-to-fix palette, zero console errors. No real device/cube pass yet — folded into the CHECKPOINT 2 re-run below.
+- **Depends:** PR-26, PR-10, PR-06.
 
 ---
 

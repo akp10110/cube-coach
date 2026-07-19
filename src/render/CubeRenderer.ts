@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { Face, FaceletString, Move } from '../core/types'
 import { faceletAt } from '../core/facelets'
-import { ACCENT_COLOR, CUBE_BODY_COLOR, CUE_DIM_OPACITY, STICKER_COLORS } from './colors'
+import { ACCENT_COLOR, CUBE_BODY_COLOR, CUE_DIM_OPACITY, LOW_CONFIDENCE_COLOR, STICKER_COLORS } from './colors'
 import { AXIS_INDEX, angleForMove, guidanceArcPoints } from './cue'
 import {
   angleDelta,
@@ -41,6 +41,9 @@ const ORBIT_DURATION_MS = 400
 const ARC_RADIUS = SPACING * 0.85
 const ARC_FACE_DISTANCE = SPACING + CUBELET_SIZE / 2 + 0.05
 const ARROWHEAD_SIZE = 0.12
+/** Below this screen-pixel movement between pointerdown and pointerup, a
+ *  gesture counts as a tap (sticker pick) rather than a drag-rotate. */
+const TAP_MOVE_THRESHOLD_PX = 6
 
 interface Cubelet {
   mesh: THREE.Mesh
@@ -49,8 +52,27 @@ interface Cubelet {
   stickers: Partial<Record<LocalFace, { face: Face; index: number }>>
   /** Accent outline shown around a sticker while it's part of the active move cue. */
   outlines: Partial<Record<LocalFace, THREE.LineLoop>>
+  /** Amber outline shown on a sticker flagged low-confidence during a scan
+   *  (setStickerFlag) — a separate layer from `outlines` so a scan's
+   *  confidence marks and a solve's move cue (different colors, different
+   *  call sites, never simultaneous) can never step on each other. */
+  flagOutlines: Partial<Record<LocalFace, THREE.LineLoop>>
   /** Fixed grid coordinate this cubelet's mesh always rests at between moves. */
   coord: CubeletCoord
+}
+
+/** Where one facelet position (face,index) lives in the mesh graph — built
+ *  once so paintSticker/setStickerFlag are O(1) instead of re-scanning all
+ *  27 cubelets on every call (paintSticker runs every ~200ms per live
+ *  sticker during a scan). */
+interface StickerLocation {
+  cubelet: Cubelet
+  localFace: LocalFace
+  materialIndex: number
+}
+
+function stickerKey(face: Face, index: number): string {
+  return `${face}${index}`
 }
 
 function easeInOutQuad(t: number): number {
@@ -97,6 +119,7 @@ export class CubeRenderer {
   private readonly camera: THREE.PerspectiveCamera
   private readonly cubeGroup: THREE.Group
   private readonly cubelets: readonly Cubelet[]
+  private readonly stickerLocations: ReadonlyMap<string, StickerLocation>
   private readonly resizeObserver: ResizeObserver
   private animationFrame = 0
   private disposed = false
@@ -107,6 +130,13 @@ export class CubeRenderer {
   private lastY = 0
   private yaw = DEFAULT_YAW
   private pitch = DEFAULT_PITCH
+
+  // Tap-to-fix on the 3D model (scan flow): a plain tap (as opposed to a
+  // drag-rotate) on a stickered cubelet face reports (face,index) so the
+  // caller can open a color picker for that exact sticker.
+  private readonly raycaster = new THREE.Raycaster()
+  private pointerDownAt: { x: number; y: number } | null = null
+  private stickerTapCallback: ((sticker: { face: Face; index: number }) => void) | null = null
 
   // Move-guidance cue (section 9 rules 2/3/8): the dashed accent arc drawn
   // in the turning face's plane, with a small arrowhead at its end. The
@@ -131,6 +161,7 @@ export class CubeRenderer {
     this.cubeGroup = new THREE.Group()
     this.scene.add(this.cubeGroup)
     this.cubelets = CUBELET_COORDS.map((coord) => this.buildCubelet(coord))
+    this.stickerLocations = this.buildStickerLocations()
     this.applyOrientation()
 
     this.cueArc = new THREE.Line(
@@ -169,6 +200,83 @@ export class CubeRenderer {
         cubelet.materials[materialIndex].color.set(color)
       }
     }
+  }
+
+  /**
+   * Paints one sticker's displayed color directly, bypassing the facelet
+   * string entirely. D3's `Face` alphabet has no "not yet scanned" value, so
+   * a view showing an in-progress, possibly-invalid partial cube (the live
+   * scan preview) can't express that state through `setState` — this is the
+   * escape hatch. Does nothing if (face,index) isn't an outer sticker.
+   */
+  paintSticker(face: Face, index: number, hex: string): void {
+    const location = this.stickerLocations.get(stickerKey(face, index))
+    if (!location) return
+    location.cubelet.materials[location.materialIndex].color.set(hex)
+  }
+
+  /** Paints all 9 stickers of `face` in one call, row-major. */
+  paintFace(face: Face, hexColors: readonly string[]): void {
+    hexColors.forEach((hex, index) => this.paintSticker(face, index, hex))
+  }
+
+  /**
+   * Shows or hides the low-confidence outline on one sticker — amber, the
+   * section 9 rule 1 exception to "never use a sticker color for UI
+   * meaning" — reserved for scan cells the classifier isn't sure about.
+   * Independent of the move-cue `outlines` layer (different color, different
+   * caller, never active at the same time on the same instance).
+   */
+  setStickerFlag(face: Face, index: number, flagged: boolean): void {
+    const location = this.stickerLocations.get(stickerKey(face, index))
+    if (!location) return
+    const outline = location.cubelet.flagOutlines[location.localFace]
+    if (outline) outline.visible = flagged
+  }
+
+  /**
+   * Eases the camera to the nearest three-quarter view that brings `face`
+   * into view — the same orbit math `animateMove`'s hidden-face auto-orbit
+   * uses, exposed directly so a view with no moves playing (the scan flow)
+   * can still keep the model facing whichever side is being captured.
+   */
+  showFace(face: Face, durationMs = ORBIT_DURATION_MS): Promise<void> {
+    const target = orientationShowingFace(face, this.yaw, this.pitch)
+    return this.orbitTo(target.yaw, target.pitch, durationMs)
+  }
+
+  /**
+   * Resolves a screen point (client coordinates, e.g. from a PointerEvent)
+   * to the (face,index) sticker under it, if any — null over empty space,
+   * the background, or an unstickered (interior) cubelet face.
+   */
+  pickSticker(clientX: number, clientY: number): { face: Face; index: number } | null {
+    const rect = this.canvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return null
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -(((clientY - rect.top) / rect.height) * 2 - 1),
+    )
+    this.raycaster.setFromCamera(ndc, this.camera)
+    const hit = this.raycaster.intersectObjects(
+      this.cubelets.map((c) => c.mesh),
+      false,
+    )[0]
+    if (!hit?.face) return null
+    const cubelet = this.cubelets.find((c) => c.mesh === hit.object)
+    const localFace = LOCAL_FACE_ORDER[hit.face.materialIndex]
+    const sticker = cubelet?.stickers[localFace]
+    return sticker ? { face: sticker.face, index: sticker.index } : null
+  }
+
+  /**
+   * Registers (or, passing null, clears) a callback fired whenever a plain
+   * tap — pointerdown then pointerup with negligible movement, as opposed to
+   * a drag-rotate — lands on a stickered cubelet face. Used by the scan
+   * flow's tap-to-fix; unused (never called) by the solve view.
+   */
+  onStickerTap(callback: ((sticker: { face: Face; index: number }) => void) | null): void {
+    this.stickerTapCallback = callback
   }
 
   /**
@@ -358,6 +466,10 @@ export class CubeRenderer {
         outline.geometry.dispose()
         ;(outline.material as THREE.Material).dispose()
       }
+      for (const outline of Object.values(cubelet.flagOutlines)) {
+        outline.geometry.dispose()
+        ;(outline.material as THREE.Material).dispose()
+      }
     }
     this.cueArc.geometry.dispose()
     ;(this.cueArc.material as THREE.Material).dispose()
@@ -385,6 +497,7 @@ export class CubeRenderer {
     this.cubeGroup.add(mesh)
 
     const outlines: Cubelet['outlines'] = {}
+    const flagOutlines: Cubelet['flagOutlines'] = {}
     for (const localFace of Object.keys(stickers) as LocalFace[]) {
       const outline = new THREE.LineLoop(
         buildOutlineGeometry(localFace),
@@ -393,9 +506,36 @@ export class CubeRenderer {
       outline.visible = false
       mesh.add(outline)
       outlines[localFace] = outline
+
+      const flagOutline = new THREE.LineLoop(
+        buildOutlineGeometry(localFace),
+        new THREE.LineBasicMaterial({ color: LOW_CONFIDENCE_COLOR }),
+      )
+      flagOutline.visible = false
+      mesh.add(flagOutline)
+      flagOutlines[localFace] = flagOutline
     }
 
-    return { mesh, materials, stickers, outlines, coord }
+    return { mesh, materials, stickers, outlines, flagOutlines, coord }
+  }
+
+  /** Reverse index from (face,index) to where it lives in the mesh graph —
+   *  see `StickerLocation`'s doc comment for why this exists. */
+  private buildStickerLocations(): ReadonlyMap<string, StickerLocation> {
+    const locations = new Map<string, StickerLocation>()
+    for (const cubelet of this.cubelets) {
+      for (const [localFace, sticker] of Object.entries(cubelet.stickers) as [
+        LocalFace,
+        { face: Face; index: number },
+      ][]) {
+        locations.set(stickerKey(sticker.face, sticker.index), {
+          cubelet,
+          localFace,
+          materialIndex: LOCAL_FACE_ORDER.indexOf(localFace),
+        })
+      }
+    }
+    return locations
   }
 
   private applyOrientation(): void {
@@ -414,6 +554,7 @@ export class CubeRenderer {
     this.dragging = true
     this.lastX = event.clientX
     this.lastY = event.clientY
+    this.pointerDownAt = { x: event.clientX, y: event.clientY }
   }
 
   private readonly onPointerMove = (event: PointerEvent): void => {
@@ -429,8 +570,15 @@ export class CubeRenderer {
     this.applyOrientation()
   }
 
-  private readonly onPointerUp = (): void => {
+  private readonly onPointerUp = (event: PointerEvent): void => {
     this.dragging = false
+    const start = this.pointerDownAt
+    this.pointerDownAt = null
+    if (!this.stickerTapCallback || !start) return
+    const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y)
+    if (moved > TAP_MOVE_THRESHOLD_PX) return
+    const sticker = this.pickSticker(event.clientX, event.clientY)
+    if (sticker) this.stickerTapCallback(sticker)
   }
 
   private readonly renderFrame = (): void => {
